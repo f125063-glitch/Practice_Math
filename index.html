@@ -84,7 +84,7 @@
     </div>
     <div class="manual-actions">
       <button id="btnApplyManual" class="btn-primary">確定出題 🚀</button>
-      <button id="btnQuickTenExample" class="btn-secondary" title="快速填入 10 以內數字體驗動畫">⚡ 體驗 10 以內教學動畫範例</button>
+      <button id="btnQuickTenExample" class="btn-secondary" title="快速填入 10 以內數字體驗動畫" style="display: none;">⚡ 體驗 10 以內教學動畫範例</button>
     </div>
   </section>
 
@@ -94,7 +94,7 @@
     <!-- Flash Animation Theater: Occupies at least 50% when active (2 terms & both <= 10) -->
     <section class="animation-theater card" id="animationTheater">
       <div class="theater-header">
-        <div class="theater-title-wrap">
+        <div class="theater-title-wrap" style="display: none;">
           <span class="badge-flash">✨ Flash 風格教學動畫 ✨</span>
           <h2 id="theaterTitle">10以內趣味運算過程演示</h2>
         </div>
@@ -141,11 +141,11 @@
         <button id="btnAnimPrev" class="btn-step" title="上一步">⏮️ 上一步</button>
         <button id="btnAnimPlayPause" class="btn-play">▶️ 播放動畫</button>
         <button id="btnAnimNext" class="btn-step" title="下一步">⏭️ 下一步</button>
-        <button id="btnAnimRestart" class="btn-step" title="重新開始">🔄 重播</button>
+        <button id="btnAnimRestart" class="btn-step" title="重新開始" style="display: none;">🔄 重播</button>
         <div class="speed-selector">
           <span>速度：</span>
           <button class="btn-speed active" data-speed="1">1.0x</button>
-          <button class="btn-speed" data-speed="0.7">慢速</button>
+          <button class="btn-speed" data-speed="0.6">慢速</button>
         </div>
       </div>
     </section>

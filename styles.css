@@ -134,7 +134,12 @@ body {
 #streakBadge,
 #btnSpeechToggle,
 .grade-tag,
-#gradeTag {
+#gradeTag,
+.theater-title-wrap,
+#theaterTitle,
+.badge-flash,
+#btnQuickTenExample,
+#btnAnimRestart {
   display: none !important;
 }
 

@@ -111,6 +111,9 @@ class FlashMathAnimator {
   }
 
   speak(text, onEndCallback = null) {
+    this.lastSpokenText = text;
+    this.lastSpeechCallback = onEndCallback;
+
     // Stop any pending speech immediately
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -129,8 +132,19 @@ class FlashMathAnimator {
       const cleanText = this.formatSpeech(text);
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = 'zh-TW';
-      utterance.rate = 0.95 * this.speedMultiplier;
-      utterance.pitch = 1.15;
+      // Clearly differentiated speech rate for 慢速 vs 1.0x
+      utterance.rate = this.speedMultiplier <= 0.75 ? 0.6 : 1.0;
+      utterance.pitch = 1.05;
+
+      // Select available Chinese voice
+      const voices = window.speechSynthesis.getVoices();
+      if (voices && voices.length > 0) {
+        const zhVoice = voices.find(v => v.lang === 'zh-TW') ||
+                        voices.find(v => v.lang.startsWith('zh'));
+        if (zhVoice) {
+          utterance.voice = zhVoice;
+        }
+      }
 
       let called = false;
       const finish = () => {
@@ -178,6 +192,15 @@ class FlashMathAnimator {
     spoken = spoken.replace(/[：:]/g, '，');
     // Remove decorative emojis
     spoken = spoken.replace(/[🍎⭐🍬🐻🏀✨🎉❌💪💡📐🎲✏️👉⏮️⏭️▶️⏸️🔄💭]/g, '');
+
+    // In slow mode, add natural breathing pauses to counting numbers
+    if (this.speedMultiplier <= 0.75) {
+      spoken = spoken.replace(/、/g, '…… ');
+      spoken = spoken.replace(/！/g, '！ ');
+      spoken = spoken.replace(/？/g, '？ ');
+      spoken = spoken.replace(/，/g, '， ');
+    }
+
     // Clean up multiple spaces
     spoken = spoken.replace(/\s+/g, ' ').trim();
     return spoken;
@@ -195,10 +218,13 @@ class FlashMathAnimator {
       }
     });
 
-    document.getElementById('btnAnimRestart').addEventListener('click', () => {
-      this.hasStepped = false;
-      this.reset();
-    });
+    const btnRestart = document.getElementById('btnAnimRestart');
+    if (btnRestart) {
+      btnRestart.addEventListener('click', () => {
+        this.hasStepped = false;
+        this.reset();
+      });
+    }
 
     document.getElementById('btnAnimNext').addEventListener('click', () => {
       this.nextStep();
@@ -218,6 +244,20 @@ class FlashMathAnimator {
         this.speedButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.speedMultiplier = parseFloat(btn.dataset.speed);
+
+        // Immediate feedback: if currently speaking or intro active, re-speak at new speed right away!
+        if ('speechSynthesis' in window && this.lastSpokenText) {
+          if (window.speechSynthesis.speaking || this.isSpeakingIntro || this.isPlaying) {
+            window.speechSynthesis.cancel();
+            if (this.timer) {
+              clearTimeout(this.timer);
+              this.timer = null;
+            }
+            setTimeout(() => {
+              this.speak(this.lastSpokenText, this.lastSpeechCallback);
+            }, 80);
+          }
+        }
       });
     });
 
@@ -731,19 +771,21 @@ class FlashMathAnimator {
 
   staggerPopSound(count) {
     if (this.soundMuted || count <= 0) return;
+    const interval = 120 / this.speedMultiplier;
     for (let i = 0; i < Math.min(count, 10); i++) {
       setTimeout(() => {
         this.playSound('pop');
-      }, i * 120);
+      }, i * interval);
     }
   }
 
   staggerDingSound(count) {
     if (this.soundMuted || count <= 0) return;
+    const interval = 150 / this.speedMultiplier;
     for (let i = 0; i < Math.min(count, 10); i++) {
       setTimeout(() => {
         this.playSound('ding');
-      }, i * 150);
+      }, i * interval);
     }
   }
 }
