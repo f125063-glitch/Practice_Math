@@ -20,10 +20,10 @@
       </div>
     </div>
     <div class="header-tools">
-      <div class="sound-toggle-btn" id="soundToggleBtn" title="音效開關">
+      <div class="sound-toggle-btn" id="soundToggleBtn" title="音效開關" style="display: none;">
         <span id="soundIcon">🔊</span> <span id="soundLabel">音效：開</span>
       </div>
-      <div class="stats-badge" title="連續答對次數">
+      <div class="stats-badge" id="streakBadge" title="連續答對次數" style="display: none;">
         🔥 連勝：<span id="streakCount">0</span>
       </div>
       <div class="stats-badge score-badge" title="答題戰績">
@@ -56,9 +56,9 @@
     <div class="control-group">
       <label class="control-title" for="digitsSelect"><span class="icon">📏</span> 數字位數</label>
       <select id="digitsSelect" class="styled-dropdown">
-        <option value="1">1 位數 (例如: 9-2)</option>
-        <!-- Default is 2 digits as required -->
-        <option value="2" selected>2 位數 (預設, 例如: 72-18)</option>
+        <!-- Default is 1 digit as required -->
+        <option value="1" selected>1 位數 (預設, 例如: 9-2)</option>
+        <option value="2">2 位數 (例如: 72-18)</option>
         <option value="3">3 位數 (例如: 369+736)</option>
         <option value="random">不限 (1~3位數皆可)</option>
       </select>
@@ -104,9 +104,9 @@
             <option value="apples">🍎 甜蜜紅蘋果</option>
             <option value="stars">⭐ 閃亮小星星</option>
             <option value="candies">🍬 彩色糖果</option>
-            <option value="bears">🐻 呆萌小熊</option>
+            <option value="basketball">🏀 籃球</option>
           </select>
-          <button id="btnSpeechToggle" class="btn-tool" title="語音朗讀教學">🗣️ 語音解說：<span id="speechState">開</span></button>
+          <button id="btnSpeechToggle" class="btn-tool" title="語音朗讀教學" style="display: none;">🗣️ 語音解說：<span id="speechState">開</span></button>
         </div>
       </div>
 
@@ -131,7 +131,7 @@
         <div class="stage-narration-box" id="stageNarrationBox">
           <div class="narrator-avatar">🐰</div>
           <div class="narrator-text" id="narratorText">
-            歡迎來到數學遊樂園！點選「開始播放」看運算過程喔！
+            歡迎來到數學遊樂園！點選「播放動畫」看運算過程！
           </div>
         </div>
       </div>
@@ -155,7 +155,7 @@
       
       <!-- Educational Grade Tag / Mode Indicator -->
       <div class="practice-header">
-        <span class="grade-tag" id="gradeTag">國小一~二年級適用</span>
+        <span class="grade-tag" id="gradeTag" style="display: none;">國小一~二年級適用</span>
         <button id="btnNewProblem" class="btn-refresh-problem">🎲 換下一題</button>
       </div>
 
@@ -233,7 +233,7 @@
           </tr>
         </thead>
         <tbody id="historyTableBody">
-          <tr class="empty-row"><td colspan="5">尚未開始練習，送出答案後會記錄在這裡喔！</td></tr>
+          <tr class="empty-row"><td colspan="5">尚未開始練習，送出答案後會記錄在這裡！</td></tr>
         </tbody>
       </table>
     </div>

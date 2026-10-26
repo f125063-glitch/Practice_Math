@@ -10,16 +10,16 @@ class MathApp {
     this.config = {
       operation: 'sub', // Default: Subtraction ('sub' or 'add')
       itemsCount: 2,    // Default: 2 items
-      digits: 2,        // Default: 2 digits (e.g. 72 - 18, 22 + 33)
+      digits: 1,        // Default: 1 digit (e.g. 8 - 5, 9 - 2)
       mode: 'auto'      // Default: auto generate ('auto' or 'manual')
     };
 
     // Current Problem State
     this.currentProblem = {
-      numbers: [72, 18],
+      numbers: [8, 5],
       operation: 'sub',
-      correctAnswer: 54,
-      isAnimationEligible: false
+      correctAnswer: 3,
+      isAnimationEligible: true
     };
 
     // Stats
@@ -223,7 +223,7 @@ class MathApp {
     if (this.config.operation === 'sub') {
       const sumOfRest = numbers.slice(1).reduce((acc, n) => acc + n, 0);
       if (numbers[0] < sumOfRest) {
-        if (!confirm(`提示：目前設定的第一個數字 (${numbers[0]}) 小於後面數字的總和 (${sumOfRest})，結果會小於 0 喔！國小數學通常建議大減小，確定要出這題嗎？`)) {
+        if (!confirm(`提示：目前設定的第一個數字 (${numbers[0]}) 小於後面數字的總和 (${sumOfRest})，結果會小於 0！國小數學通常建議大減小，確定要出這題嗎？`)) {
           return;
         }
       }
@@ -415,17 +415,17 @@ class MathApp {
           const d1 = numbers[0] % 10;
           const d2 = numbers[1] % 10;
           if (d1 + d2 >= 10) {
-            note = `<p style="margin-top: 10px; font-size: 0.9rem; color: #e03131; text-align: center;">💡 個位數相加 ${d1} ＋ ${d2} ＝ ${d1 + d2}，滿十要向前一位（十位）進 1 喔！</p>`;
+            note = `<p style="margin-top: 10px; font-size: 0.9rem; color: #e03131; text-align: center;">💡 個位數相加 ${d1} ＋ ${d2} ＝ ${d1 + d2}，滿十要向前一位（十位）進 1！</p>`;
           }
         } else {
           const d1 = numbers[0] % 10;
           const d2 = numbers[1] % 10;
           if (d1 < d2) {
-            note = `<p style="margin-top: 10px; font-size: 0.9rem; color: #e03131; text-align: center;">💡 個位數 ${d1} 不夠減 ${d2}，需要向十位數借 1 當作 10 喔！</p>`;
+            note = `<p style="margin-top: 10px; font-size: 0.9rem; color: #e03131; text-align: center;">💡 個位數 ${d1} 不夠減 ${d2}，需要向十位數借 1 當作 10！</p>`;
           }
         }
       } else {
-        note = `<p style="margin-top: 10px; font-size: 0.88rem; color: #868e96; text-align: center;">💭 請先動動腦輸入答案，送出後會揭曉直式運算提示喔！</p>`;
+        note = `<p style="margin-top: 10px; font-size: 0.88rem; color: #868e96; text-align: center;">💭 請先動動腦輸入答案，送出後會揭曉直式運算提示！</p>`;
       }
 
       this.columnMathBody.innerHTML = tableHtml + note;
@@ -453,7 +453,7 @@ class MathApp {
   checkAnswer() {
     const valText = this.userAnswerInput.value.trim();
     if (valText === '') {
-      alert('請先輸入你的答案喔！');
+      alert('請先輸入你的答案！');
       this.userAnswerInput.focus();
       return;
     }
@@ -499,7 +499,7 @@ class MathApp {
       this.feedbackBanner.className = 'feedback-banner wrong';
       this.feedbackIcon.textContent = '💪';
       this.feedbackTitle.textContent = '再想一想，加油！';
-      this.feedbackDesc.textContent = `正確答案是：${formulaStr}。點選下方「查看直式算則解析」可以看解題提示喔！`;
+      this.feedbackDesc.textContent = `正確答案是：${formulaStr}。點選下方「查看直式算則解析」可以看解題提示！`;
     }
   }
 
@@ -530,7 +530,7 @@ class MathApp {
 
     if (this.history.length === 0) {
       this.historyTableBody.innerHTML = `
-        <tr class="empty-row"><td colspan="5">尚未開始練習，送出答案後會記錄在這裡喔！</td></tr>
+        <tr class="empty-row"><td colspan="5">尚未開始練習，送出答案後會記錄在這裡！</td></tr>
       `;
       return;
     }

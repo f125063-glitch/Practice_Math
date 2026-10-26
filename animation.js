@@ -26,7 +26,8 @@ class FlashMathAnimator {
       apples: { icon: '🍎', name: '蘋果', color: '#ff6b6b' },
       stars: { icon: '⭐', name: '星星', color: '#ffd43b' },
       candies: { icon: '🍬', name: '糖果', color: '#ff922b' },
-      bears: { icon: '🐻', name: '小熊', color: '#845ef7' }
+      basketball: { icon: '🏀', name: '籃球', color: '#fd7e14' },
+      bears: { icon: '🏀', name: '籃球', color: '#fd7e14' }
     };
     this.currentTheme = 'apples';
 
@@ -119,7 +120,7 @@ class FlashMathAnimator {
       // If speech is disabled, fallback to delay proportional to text length
       const fallbackDelay = Math.max(2000, text.length * 150) / this.speedMultiplier;
       this.timer = setTimeout(() => {
-        if (onEndCallback && this.isPlaying) onEndCallback();
+        if (onEndCallback) onEndCallback();
       }, fallbackDelay);
       return;
     }
@@ -135,11 +136,16 @@ class FlashMathAnimator {
       const finish = () => {
         if (called) return;
         called = true;
-        if (onEndCallback && this.isPlaying) {
-          // Pause slightly after reading before continuing
-          this.timer = setTimeout(() => {
-            if (this.isPlaying) onEndCallback();
-          }, 600 / this.speedMultiplier);
+        if (onEndCallback) {
+          if (this.isPlaying) {
+            // Pause slightly after reading before continuing
+            this.timer = setTimeout(() => {
+              if (this.isPlaying) onEndCallback();
+            }, 600 / this.speedMultiplier);
+          } else {
+            // When not playing (e.g. Step 0 intro narration), call callback immediately
+            onEndCallback();
+          }
         }
       };
 
@@ -155,13 +161,15 @@ class FlashMathAnimator {
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn('Speech synthesis error:', e);
-      if (onEndCallback && this.isPlaying) onEndCallback();
+      if (onEndCallback) onEndCallback();
     }
   }
 
   // Format mathematical symbols to natural spoken Mandarin
   formatSpeech(text) {
     let spoken = text;
+    // Remove "喔" from all speech per requirement d
+    spoken = spoken.replace(/喔/g, '');
     // Replace operators with Mandarin words
     spoken = spoken.replace(/－|-/g, ' 減 ');
     spoken = spoken.replace(/＋|\+/g, ' 加 ');
@@ -169,13 +177,16 @@ class FlashMathAnimator {
     // Replace colons with comma for natural speech pause
     spoken = spoken.replace(/[：:]/g, '，');
     // Remove decorative emojis
-    spoken = spoken.replace(/[🍎⭐🍬🐻✨🎉❌💪💡📐🎲✏️👉⏮️⏭️▶️⏸️🔄💭]/g, '');
+    spoken = spoken.replace(/[🍎⭐🍬🐻🏀✨🎉❌💪💡📐🎲✏️👉⏮️⏭️▶️⏸️🔄💭]/g, '');
     // Clean up multiple spaces
     spoken = spoken.replace(/\s+/g, ' ').trim();
     return spoken;
   }
 
   bindEvents() {
+    this.btnPrev = document.getElementById('btnAnimPrev');
+    this.btnNext = document.getElementById('btnAnimNext');
+
     this.btnPlayPause.addEventListener('click', () => {
       if (this.isPlaying) {
         this.pause();
@@ -185,17 +196,15 @@ class FlashMathAnimator {
     });
 
     document.getElementById('btnAnimRestart').addEventListener('click', () => {
+      this.hasStepped = false;
       this.reset();
-      this.play();
     });
 
     document.getElementById('btnAnimNext').addEventListener('click', () => {
-      this.pause();
       this.nextStep();
     });
 
     document.getElementById('btnAnimPrev').addEventListener('click', () => {
-      this.pause();
       this.prevStep();
     });
 
@@ -213,13 +222,62 @@ class FlashMathAnimator {
     });
 
     const speechBtn = document.getElementById('btnSpeechToggle');
-    speechBtn.addEventListener('click', () => {
-      this.speechEnabled = !this.speechEnabled;
-      document.getElementById('speechState').textContent = this.speechEnabled ? '開' : '關';
-      if (!this.speechEnabled && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+    if (speechBtn) {
+      speechBtn.addEventListener('click', () => {
+        this.speechEnabled = !this.speechEnabled;
+        const stateEl = document.getElementById('speechState');
+        if (stateEl) stateEl.textContent = this.speechEnabled ? '開' : '關';
+        if (!this.speechEnabled && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+      });
+    }
+  }
+
+  updateButtonStates() {
+    if (!this.btnPrev) this.btnPrev = document.getElementById('btnAnimPrev');
+    if (!this.btnPlayPause) this.btnPlayPause = document.getElementById('btnAnimPlayPause');
+
+    // Requirement c: 當播放/唸到第二步時, “上一步”的按鈕才能使用(顏色也跟著恢復)
+    // Requirement a: 旁白朗讀時，"上一步"反灰且無法使用
+    if (this.currentStep >= 2 && !this.isSpeakingIntro) {
+      this.btnPrev.disabled = false;
+      this.btnPrev.classList.remove('btn-disabled');
+    } else {
+      this.btnPrev.disabled = true;
+      this.btnPrev.classList.add('btn-disabled');
+    }
+
+    // Requirement a & b:
+    // 當旁白開始朗讀的時候, “播放動畫”和"上一步"的按鈕要反灰且無法使用.
+    // 當旁白朗讀結束後, “播放動畫”的按鈕才能使用(顏色也跟著恢復)
+    if (this.isSpeakingIntro) {
+      this.btnPlayPause.disabled = true;
+      this.btnPlayPause.classList.add('btn-disabled');
+    } else {
+      this.btnPlayPause.disabled = false;
+      this.btnPlayPause.classList.remove('btn-disabled');
+    }
+
+    // Requirement e: 當按下”上一步”或”下一步”後, “播放動畫"的文字敘述要變更為”繼續播放”, 直到按”重播"或”換下一題”才回復
+    if (!this.isPlaying) {
+      if (this.currentStep === 3 && !this.isAnswerRevealed) {
+        this.btnPlayPause.textContent = '⏸️ 思考中（請於右側輸入答案）';
+        this.btnPlayPause.style.background = 'linear-gradient(135deg, #ffa94d, #fd7e14)';
+      } else if (this.currentStep >= this.totalSteps) {
+        this.btnPlayPause.textContent = '🔄 重播動畫';
+        this.btnPlayPause.style.background = 'linear-gradient(135deg, #20c997, #12b886)';
+      } else if (this.hasStepped) {
+        this.btnPlayPause.textContent = '▶️ 繼續播放';
+        this.btnPlayPause.style.background = 'linear-gradient(135deg, #20c997, #12b886)';
+      } else {
+        this.btnPlayPause.textContent = '▶️ 播放動畫';
+        this.btnPlayPause.style.background = 'linear-gradient(135deg, #20c997, #12b886)';
       }
-    });
+    } else {
+      this.btnPlayPause.textContent = '⏸️ 暫停播放';
+      this.btnPlayPause.style.background = 'linear-gradient(135deg, #ffa94d, #fd7e14)';
+    }
   }
 
   loadProblem(num1, num2, op) {
@@ -231,23 +289,28 @@ class FlashMathAnimator {
     };
     this.totalSteps = 4;
     this.isAnswerRevealed = false;
+    this.hasStepped = false;
     this.reset();
   }
 
   reset() {
     this.pause();
     this.currentStep = 0;
+    this.hasStepped = false;
+    this.isSpeakingIntro = true;
     this.updateFormulaBanner(false);
+    this.updateButtonStates();
     this.executeCurrentStep();
   }
 
   play() {
+    if (this.isSpeakingIntro) return;
+
     if (this.currentStep === 3 && !this.isAnswerRevealed) {
-      // At step 3, cannot play to step 4 until answer is submitted on right
       this.pause();
-      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步喔！';
+      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步！';
       this.setNarrator(tip);
-      this.speak('請先在右邊輸入答案喔！');
+      this.speak('請先在右邊輸入答案！');
       return;
     }
 
@@ -255,17 +318,22 @@ class FlashMathAnimator {
       this.currentStep = 0;
     }
 
-    this.isPlaying = true;
-    this.btnPlayPause.textContent = '⏸️ 暫停播放';
-    this.btnPlayPause.style.background = 'linear-gradient(135deg, #ffa94d, #fd7e14)';
+    // Requirement b: 當旁白朗讀結束後, 此時按下“播放動畫”後, 要直接播放/唸第一步的內容
+    if (this.currentStep === 0) {
+      this.currentStep = 1;
+    }
 
+    this.isPlaying = true;
+    this.updateButtonStates();
     this.executeCurrentStep();
   }
 
   pause() {
     this.isPlaying = false;
-    this.btnPlayPause.textContent = '▶️ 播放動畫';
-    this.btnPlayPause.style.background = 'linear-gradient(135deg, #20c997, #12b886)';
+    if (this.currentStep > 0) {
+      this.hasStepped = true;
+    }
+    this.updateButtonStates();
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -279,23 +347,30 @@ class FlashMathAnimator {
   nextStep() {
     if (this.currentStep === 3 && !this.isAnswerRevealed) {
       this.pause();
-      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步喔！';
+      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步！';
       this.setNarrator(tip);
-      this.speak('請先在右邊輸入答案喔！');
+      this.speak('請先在右邊輸入答案！');
       return;
     }
 
     if (this.currentStep < this.totalSteps) {
+      // Requirement e: 當按下”下一步”後, “播放動畫"的文字敘述要變更為”繼續播放”
+      this.hasStepped = true;
       this.pause();
       this.currentStep++;
+      this.updateButtonStates();
       this.executeCurrentStep();
     }
   }
 
   prevStep() {
-    if (this.currentStep > 0) {
+    // Requirement c: 當播放/唸到第二步時, “上一步”的按鈕才能使用
+    if (this.currentStep >= 2) {
+      // Requirement e: 當按下”上一步”後, “播放動畫"的文字敘述要變更為”繼續播放”
+      this.hasStepped = true;
       this.pause();
       this.currentStep--;
+      this.updateButtonStates();
       this.executeCurrentStep();
     }
   }
@@ -309,6 +384,7 @@ class FlashMathAnimator {
   }
 
   executeCurrentStep() {
+    this.updateButtonStates();
     this.renderCurrentStep();
   }
 
@@ -324,6 +400,7 @@ class FlashMathAnimator {
 
     if (this.currentStep < this.totalSteps) {
       this.currentStep++;
+      this.updateButtonStates();
       this.executeCurrentStep();
     } else {
       this.pause();
@@ -336,6 +413,7 @@ class FlashMathAnimator {
     this.pause();
     this.currentStep = 4;
     this.updateFormulaBanner(true);
+    this.updateButtonStates();
     this.executeCurrentStep();
   }
 
@@ -364,12 +442,21 @@ class FlashMathAnimator {
   // --- Addition Animation Steps ---
   renderAdditionStep(container, num1, num2, result, theme) {
     if (this.currentStep === 0) {
-      // Step 0: Initial state - No result shown or spoken
+      // Step 0: Initial state - Opening narration
       this.updateFormulaBanner(false);
       const text = `我們要來算：${num1} 加 ${num2} 等於多少呢？準備好了嗎？點選播放一起看！`;
       this.setNarrator(text);
       this.playSound('ding');
-      this.speak(text, () => this.onStepFinished());
+
+      // Requirement a: 旁白朗讀時，“播放動畫”和"上一步"反灰且無法使用
+      this.isSpeakingIntro = true;
+      this.updateButtonStates();
+
+      this.speak(text, () => {
+        // Requirement b: 旁白朗讀結束後，“播放動畫”按鈕才能使用(顏色恢復)
+        this.isSpeakingIntro = false;
+        this.updateButtonStates();
+      });
 
       const previewBox = document.createElement('div');
       previewBox.innerHTML = `
@@ -416,7 +503,7 @@ class FlashMathAnimator {
     } else if (this.currentStep === 3) {
       // Step 3: Question step - Do NOT reveal result
       this.updateFormulaBanner(false);
-      const text = `第三步：${num1} 加 ${num2} 合在一起總共有幾個呢？請數一數，也可以在右邊輸入答案喔！`;
+      const text = `第三步：${num1} 加 ${num2} 合在一起總共有幾個呢？請數一數，也可以在右邊輸入答案！`;
       this.setNarrator(text);
       // Spoken text is 100% identical to UI narrator text
       this.speak(text, () => this.onStepFinished());
@@ -426,7 +513,7 @@ class FlashMathAnimator {
 
       const hintEl = document.createElement('div');
       hintEl.style.cssText = 'width: 100%; text-align: center; font-size: 1.15rem; font-weight: 700; color: #1864ab; margin-top: 8px;';
-      hintEl.textContent = '💭 數數看合在一起總共有幾個？請在右邊輸入答案喔！';
+      hintEl.textContent = '💭 數數看合在一起總共有幾個？請在右邊輸入答案！';
       container.appendChild(hintEl);
 
       this.playSound('ding');
@@ -448,12 +535,21 @@ class FlashMathAnimator {
   // --- Subtraction Animation Steps ---
   renderSubtractionStep(container, num1, num2, result, theme) {
     if (this.currentStep === 0) {
-      // Step 0: Ready - No result shown or spoken
+      // Step 0: Initial state - Opening narration
       this.updateFormulaBanner(false);
-      const text = `我們要來算：${num1} 減 ${num2} 等於多少呢？看減法是怎麼變少的喔！`;
+      const text = `我們要來算：${num1} 減 ${num2} 等於多少呢？看減法是怎麼變少的！`;
       this.setNarrator(text);
       this.playSound('ding');
-      this.speak(text, () => this.onStepFinished());
+
+      // Requirement a: 旁白朗讀時，“播放動畫”和"上一步"反灰且無法使用
+      this.isSpeakingIntro = true;
+      this.updateButtonStates();
+
+      this.speak(text, () => {
+        // Requirement b: 旁白朗讀結束後，“播放動畫”按鈕才能使用(顏色恢復)
+        this.isSpeakingIntro = false;
+        this.updateButtonStates();
+      });
 
       const previewBox = document.createElement('div');
       previewBox.innerHTML = `
@@ -478,9 +574,9 @@ class FlashMathAnimator {
       this.staggerPopSound(num1);
 
     } else if (this.currentStep === 2) {
-      // Step 2: Subtracting (cross out)
+      // Step 2: Subtracting - Requirement f: "畫斜線"
       this.updateFormulaBanner(false);
-      const text = `第二步：減掉 ${num2} 顆！我們把 ${num2} 顆拿走畫叉叉 ❌！`;
+      const text = `第二步：減掉 ${num2} 顆！我們把 ${num2} 顆拿走畫斜線！`;
       this.setNarrator(text);
       this.speak(text, () => this.onStepFinished());
 
@@ -510,7 +606,7 @@ class FlashMathAnimator {
     } else if (this.currentStep === 3) {
       // Step 3: Question step - Split per request: "8減5剩下幾個?" (No result shown or spoken)
       this.updateFormulaBanner(false);
-      const text = `第三步：${num1} 減 ${num2} 剩下幾個呢？請數一數，也可以在右邊輸入答案喔！`;
+      const text = `第三步：${num1} 減 ${num2} 剩下幾個呢？請數一數，也可以在右邊輸入答案！`;
       this.setNarrator(text);
       // Spoken text is 100% identical to UI narrator text
       this.speak(text, () => this.onStepFinished());
@@ -520,7 +616,7 @@ class FlashMathAnimator {
 
       const hintEl = document.createElement('div');
       hintEl.style.cssText = 'width: 100%; text-align: center; font-size: 1.15rem; font-weight: 700; color: #d9480f; margin-top: 8px;';
-      hintEl.textContent = `💭 數數看剩下幾個？請在右邊輸入答案喔！`;
+      hintEl.textContent = `💭 數數看剩下幾個？請在右邊輸入答案！`;
       container.appendChild(hintEl);
 
       this.playSound('ding');
