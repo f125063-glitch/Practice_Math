@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>歡樂數學加減法大冒險 (幼稚園大班 ~ 國小六年級)</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-area">
+      <span class="logo-icon">🧮</span>
+      <div class="logo-text">
+        <h1>歡樂數學加減法冒險</h1>
+        <p class="subtitle">幼稚園大班至國小六年級專用・趣味動態教學與自我挑戰</p>
+      </div>
+    </div>
+    <div class="header-tools">
+      <div class="sound-toggle-btn" id="soundToggleBtn" title="音效開關">
+        <span id="soundIcon">🔊</span> <span id="soundLabel">音效：開</span>
+      </div>
+      <div class="stats-badge" title="連續答對次數">
+        🔥 連勝：<span id="streakCount">0</span>
+      </div>
+      <div class="stats-badge score-badge" title="答題戰績">
+        ⭐ 得分：<span id="correctCount">0</span> / <span id="totalAttempted">0</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Settings Control Bar -->
+  <section class="control-panel card">
+    <div class="control-group">
+      <label class="control-title"><span class="icon">⚙️</span> 運算類型</label>
+      <div class="btn-group" id="operationGroup">
+        <!-- Default is Subtraction as required -->
+        <button type="button" class="btn-toggle active" data-op="sub">➖ 減法 (預設)</button>
+        <button type="button" class="btn-toggle" data-op="add">➕ 加法</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label class="control-title" for="itemsCountSelect"><span class="icon">🔢</span> 數字項目數</label>
+      <select id="itemsCountSelect" class="styled-dropdown">
+        <!-- Default is 2 numbers as required -->
+        <option value="2" selected>2 個數字 (預設)</option>
+        <option value="3">3 個數字</option>
+        <option value="4">4 個數字</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label class="control-title" for="digitsSelect"><span class="icon">📏</span> 數字位數</label>
+      <select id="digitsSelect" class="styled-dropdown">
+        <option value="1">1 位數 (例如: 9-2)</option>
+        <!-- Default is 2 digits as required -->
+        <option value="2" selected>2 位數 (預設, 例如: 72-18)</option>
+        <option value="3">3 位數 (例如: 369+736)</option>
+        <option value="random">不限 (1~3位數皆可)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label class="control-title"><span class="icon">✍️</span> 出題方式</label>
+      <div class="btn-group" id="inputModeGroup">
+        <button type="button" class="btn-toggle active" data-mode="auto">🎲 自動產生</button>
+        <button type="button" class="btn-toggle" data-mode="manual">✏️ 手動輸入</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Manual Input Drawer (Conditional) -->
+  <section class="manual-input-panel card" id="manualInputPanel" style="display: none;">
+    <div class="manual-header">
+      <h3>✍️ 請手動輸入題目數字：</h3>
+      <span class="manual-tip">（提示：2個數字且皆 ≤ 10 時將自動啟動 Flash 動畫教學！）</span>
+    </div>
+    <div class="manual-fields-row" id="manualFieldsContainer">
+      <!-- Dynamic manual input inputs rendered here -->
+    </div>
+    <div class="manual-actions">
+      <button id="btnApplyManual" class="btn-primary">確定出題 🚀</button>
+      <button id="btnQuickTenExample" class="btn-secondary" title="快速填入 10 以內數字體驗動畫">⚡ 體驗 10 以內教學動畫範例</button>
+    </div>
+  </section>
+
+  <!-- Main Workspace Area -->
+  <main class="main-workspace" id="mainWorkspace">
+    
+    <!-- Flash Animation Theater: Occupies at least 50% when active (2 terms & both <= 10) -->
+    <section class="animation-theater card" id="animationTheater">
+      <div class="theater-header">
+        <div class="theater-title-wrap">
+          <span class="badge-flash">✨ Flash 風格教學動畫 ✨</span>
+          <h2 id="theaterTitle">10以內趣味運算過程演示</h2>
+        </div>
+        <div class="theater-controls-top">
+          <label for="themeSelect">主題：</label>
+          <select id="themeSelect" class="styled-select">
+            <option value="apples">🍎 甜蜜紅蘋果</option>
+            <option value="stars">⭐ 閃亮小星星</option>
+            <option value="candies">🍬 彩色糖果</option>
+            <option value="bears">🐻 呆萌小熊</option>
+          </select>
+          <button id="btnSpeechToggle" class="btn-tool" title="語音朗讀教學">🗣️ 語音解說：<span id="speechState">開</span></button>
+        </div>
+      </div>
+
+      <!-- Animation Stage Screen -->
+      <div class="theater-stage" id="theaterStage">
+        <div class="stage-sky-backdrop">
+          <div class="cloud cloud-1"></div>
+          <div class="cloud cloud-2"></div>
+        </div>
+
+        <!-- Formula Banner inside stage -->
+        <div class="stage-formula-banner" id="stageFormulaBanner">
+          7 － 3 ＝ ？
+        </div>
+
+        <!-- Dynamic Visual Presentation Canvas / Object Container -->
+        <div class="stage-canvas-container" id="stageCanvasContainer">
+          <!-- Item groups & interactive cartoon elements will be rendered here -->
+        </div>
+
+        <!-- Flash Narration Subtitle Box -->
+        <div class="stage-narration-box" id="stageNarrationBox">
+          <div class="narrator-avatar">🐰</div>
+          <div class="narrator-text" id="narratorText">
+            歡迎來到數學遊樂園！點選「開始播放」看運算過程喔！
+          </div>
+        </div>
+      </div>
+
+      <!-- Theater Playback Bar -->
+      <div class="theater-playback-bar">
+        <button id="btnAnimPrev" class="btn-step" title="上一步">⏮️ 上一步</button>
+        <button id="btnAnimPlayPause" class="btn-play">▶️ 播放動畫</button>
+        <button id="btnAnimNext" class="btn-step" title="下一步">⏭️ 下一步</button>
+        <button id="btnAnimRestart" class="btn-step" title="重新開始">🔄 重播</button>
+        <div class="speed-selector">
+          <span>速度：</span>
+          <button class="btn-speed active" data-speed="1">1.0x</button>
+          <button class="btn-speed" data-speed="0.7">慢速</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Practice & Quiz Area -->
+    <section class="practice-area card" id="practiceArea">
+      
+      <!-- Educational Grade Tag / Mode Indicator -->
+      <div class="practice-header">
+        <span class="grade-tag" id="gradeTag">國小一~二年級適用</span>
+        <button id="btnNewProblem" class="btn-refresh-problem">🎲 換下一題</button>
+      </div>
+
+      <!-- Problem Presentation Box -->
+      <div class="problem-display-card">
+        <div class="horizontal-problem" id="horizontalProblem">
+          <!-- e.g. 72 - 18 = -->
+        </div>
+
+        <!-- Interactive Answer Box -->
+        <div class="answer-row">
+          <div class="input-wrapper">
+            <span class="equal-sign">＝</span>
+            <input type="number" id="userAnswerInput" class="user-answer-input" placeholder="請輸入答案" autocomplete="off" />
+          </div>
+          <button id="btnSubmitAnswer" class="btn-submit-answer">確認送出 🎯</button>
+        </div>
+
+        <!-- Feedback & Praise Alert -->
+        <div class="feedback-banner" id="feedbackBanner" style="display: none;">
+          <div class="feedback-icon" id="feedbackIcon">🎉</div>
+          <div class="feedback-content">
+            <h4 id="feedbackTitle">答對了！太厲害了！</h4>
+            <p id="feedbackDesc">72 － 18 ＝ 54</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- On-Screen Virtual Numpad (Perfect for tablets, touchscreen, young learners) -->
+      <div class="virtual-numpad">
+        <button class="num-key" data-key="1">1</button>
+        <button class="num-key" data-key="2">2</button>
+        <button class="num-key" data-key="3">3</button>
+        <button class="num-key" data-key="4">4</button>
+        <button class="num-key" data-key="5">5</button>
+        <button class="num-key" data-key="6">6</button>
+        <button class="num-key" data-key="7">7</button>
+        <button class="num-key" data-key="8">8</button>
+        <button class="num-key" data-key="9">9</button>
+        <button class="num-key special-key" data-key="clear">清除 C</button>
+        <button class="num-key" data-key="0">0</button>
+        <button class="num-key special-key" data-key="backspace">⌫ 刪除</button>
+      </div>
+
+      <!-- Column Math (直式計算輔助板) for multi-digit calculations -->
+      <div class="column-math-collapsible" id="columnMathSection">
+        <div class="collapsible-toggle" id="toggleColumnMath">
+          <span>📐 查看直式算則解析 (進位/借位過程)</span>
+          <span class="toggle-arrow" id="toggleArrow">▼</span>
+        </div>
+        <div class="column-math-body" id="columnMathBody" style="display: none;">
+          <!-- Dynamically populated vertical math step breakdown -->
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Bottom History & Practice Summary -->
+  <footer class="app-footer card">
+    <div class="footer-header">
+      <h3>📋 本次練習紀錄 (<span id="historyCount">0</span> 題)</h3>
+      <button id="btnClearHistory" class="btn-text">清空紀錄</button>
+    </div>
+    <div class="history-list-scroll">
+      <table class="history-table" id="historyTable">
+        <thead>
+          <tr>
+            <th>題號</th>
+            <th>算式</th>
+            <th>你的答案</th>
+            <th>正確答案</th>
+            <th>結果</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody">
+          <tr class="empty-row"><td colspan="5">尚未開始練習，送出答案後會記錄在這裡喔！</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </footer>
+
+  <script src="animation.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

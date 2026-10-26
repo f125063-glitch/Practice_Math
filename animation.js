@@ -1,0 +1,666 @@
+/**
+ * animation.js - Flash-like Interactive Math Teaching Animation Engine
+ * Suitable for Kindergarten (大班) to Lower Elementary
+ * Demonstrates 2-item addition and subtraction with numbers <= 10
+ */
+
+class FlashMathAnimator {
+  constructor() {
+    this.stage = document.getElementById('stageCanvasContainer');
+    this.formulaBanner = document.getElementById('stageFormulaBanner');
+    this.narratorText = document.getElementById('narratorText');
+    this.btnPlayPause = document.getElementById('btnAnimPlayPause');
+    this.themeSelect = document.getElementById('themeSelect');
+    this.speedButtons = document.querySelectorAll('.btn-speed');
+
+    this.currentProblem = null; // { num1, num2, op, result }
+    this.currentStep = 0;
+    this.totalSteps = 4;
+    this.isPlaying = false;
+    this.speedMultiplier = 1.0;
+    this.timer = null;
+    this.speechEnabled = true;
+
+    // Theme assets
+    this.themes = {
+      apples: { icon: '🍎', name: '蘋果', color: '#ff6b6b' },
+      stars: { icon: '⭐', name: '星星', color: '#ffd43b' },
+      candies: { icon: '🍬', name: '糖果', color: '#ff922b' },
+      bears: { icon: '🐻', name: '小熊', color: '#845ef7' }
+    };
+    this.currentTheme = 'apples';
+
+    this.initAudio();
+    this.bindEvents();
+  }
+
+  initAudio() {
+    this.audioCtx = null;
+    this.soundMuted = false;
+  }
+
+  getAudioContext() {
+    if (!this.audioCtx) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) {
+        this.audioCtx = new AudioContext();
+      }
+    }
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume();
+    }
+    return this.audioCtx;
+  }
+
+  // Play synthesized retro Flash-like sound effects
+  playSound(type) {
+    if (this.soundMuted) return;
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+
+      if (type === 'pop') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      } else if (type === 'woosh') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(350, now);
+        osc.frequency.exponentialRampToValueAtTime(150, now + 0.2);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      } else if (type === 'ding') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      } else if (type === 'fanfare') {
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C
+        notes.forEach((freq, idx) => {
+          const noteOsc = ctx.createOscillator();
+          const noteGain = ctx.createGain();
+          noteOsc.connect(noteGain);
+          noteGain.connect(ctx.destination);
+          const start = now + idx * 0.12;
+          noteOsc.frequency.setValueAtTime(freq, start);
+          noteGain.gain.setValueAtTime(0.2, start);
+          noteGain.gain.exponentialRampToValueAtTime(0.01, start + 0.35);
+          noteOsc.start(start);
+          noteOsc.stop(start + 0.35);
+        });
+      }
+    } catch (e) {
+      console.warn('Audio playback not allowed yet or error:', e);
+    }
+  }
+
+  speak(text, onEndCallback = null) {
+    // Stop any pending speech immediately
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    if (!this.speechEnabled || !('speechSynthesis' in window)) {
+      // If speech is disabled, fallback to delay proportional to text length
+      const fallbackDelay = Math.max(2000, text.length * 150) / this.speedMultiplier;
+      this.timer = setTimeout(() => {
+        if (onEndCallback && this.isPlaying) onEndCallback();
+      }, fallbackDelay);
+      return;
+    }
+
+    try {
+      const cleanText = this.formatSpeech(text);
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = 'zh-TW';
+      utterance.rate = 0.95 * this.speedMultiplier;
+      utterance.pitch = 1.15;
+
+      let called = false;
+      const finish = () => {
+        if (called) return;
+        called = true;
+        if (onEndCallback && this.isPlaying) {
+          // Pause slightly after reading before continuing
+          this.timer = setTimeout(() => {
+            if (this.isPlaying) onEndCallback();
+          }, 600 / this.speedMultiplier);
+        }
+      };
+
+      utterance.onend = finish;
+      utterance.onerror = (e) => {
+        // If utterance was intentionally canceled/interrupted by pause button, don't trigger callback
+        if (e.error !== 'canceled' && e.error !== 'interrupted') {
+          finish();
+        }
+      };
+
+      this.currentUtterance = utterance;
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('Speech synthesis error:', e);
+      if (onEndCallback && this.isPlaying) onEndCallback();
+    }
+  }
+
+  // Format mathematical symbols to natural spoken Mandarin
+  formatSpeech(text) {
+    let spoken = text;
+    // Replace operators with Mandarin words
+    spoken = spoken.replace(/－|-/g, ' 減 ');
+    spoken = spoken.replace(/＋|\+/g, ' 加 ');
+    spoken = spoken.replace(/＝|=/g, ' 等於 ');
+    // Replace colons with comma for natural speech pause
+    spoken = spoken.replace(/[：:]/g, '，');
+    // Remove decorative emojis
+    spoken = spoken.replace(/[🍎⭐🍬🐻✨🎉❌💪💡📐🎲✏️👉⏮️⏭️▶️⏸️🔄💭]/g, '');
+    // Clean up multiple spaces
+    spoken = spoken.replace(/\s+/g, ' ').trim();
+    return spoken;
+  }
+
+  bindEvents() {
+    this.btnPlayPause.addEventListener('click', () => {
+      if (this.isPlaying) {
+        this.pause();
+      } else {
+        this.play();
+      }
+    });
+
+    document.getElementById('btnAnimRestart').addEventListener('click', () => {
+      this.reset();
+      this.play();
+    });
+
+    document.getElementById('btnAnimNext').addEventListener('click', () => {
+      this.pause();
+      this.nextStep();
+    });
+
+    document.getElementById('btnAnimPrev').addEventListener('click', () => {
+      this.pause();
+      this.prevStep();
+    });
+
+    this.themeSelect.addEventListener('change', (e) => {
+      this.currentTheme = e.target.value;
+      this.renderCurrentStep();
+    });
+
+    this.speedButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.speedButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.speedMultiplier = parseFloat(btn.dataset.speed);
+      });
+    });
+
+    const speechBtn = document.getElementById('btnSpeechToggle');
+    speechBtn.addEventListener('click', () => {
+      this.speechEnabled = !this.speechEnabled;
+      document.getElementById('speechState').textContent = this.speechEnabled ? '開' : '關';
+      if (!this.speechEnabled && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    });
+  }
+
+  loadProblem(num1, num2, op) {
+    this.currentProblem = {
+      num1: parseInt(num1, 10),
+      num2: parseInt(num2, 10),
+      op: op, // 'add' or 'sub'
+      result: op === 'add' ? (num1 + num2) : (num1 - num2)
+    };
+    this.totalSteps = 4;
+    this.isAnswerRevealed = false;
+    this.reset();
+  }
+
+  reset() {
+    this.pause();
+    this.currentStep = 0;
+    this.updateFormulaBanner(false);
+    this.executeCurrentStep();
+  }
+
+  play() {
+    if (this.currentStep === 3 && !this.isAnswerRevealed) {
+      // At step 3, cannot play to step 4 until answer is submitted on right
+      this.pause();
+      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步喔！';
+      this.setNarrator(tip);
+      this.speak('請先在右邊輸入答案喔！');
+      return;
+    }
+
+    if (this.currentStep >= this.totalSteps) {
+      this.currentStep = 0;
+    }
+
+    this.isPlaying = true;
+    this.btnPlayPause.textContent = '⏸️ 暫停播放';
+    this.btnPlayPause.style.background = 'linear-gradient(135deg, #ffa94d, #fd7e14)';
+
+    this.executeCurrentStep();
+  }
+
+  pause() {
+    this.isPlaying = false;
+    this.btnPlayPause.textContent = '▶️ 播放動畫';
+    this.btnPlayPause.style.background = 'linear-gradient(135deg, #20c997, #12b886)';
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    // Requirement b: Stop speech immediately, don't keep playing or re-read!
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  nextStep() {
+    if (this.currentStep === 3 && !this.isAnswerRevealed) {
+      this.pause();
+      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步喔！';
+      this.setNarrator(tip);
+      this.speak('請先在右邊輸入答案喔！');
+      return;
+    }
+
+    if (this.currentStep < this.totalSteps) {
+      this.pause();
+      this.currentStep++;
+      this.executeCurrentStep();
+    }
+  }
+
+  prevStep() {
+    if (this.currentStep > 0) {
+      this.pause();
+      this.currentStep--;
+      this.executeCurrentStep();
+    }
+  }
+
+  updateFormulaBanner(showResult = false) {
+    if (!this.currentProblem) return;
+    const { num1, num2, op, result } = this.currentProblem;
+    const opChar = op === 'add' ? '＋' : '－';
+    const resText = showResult ? result : '？';
+    this.formulaBanner.textContent = `${num1} ${opChar} ${num2} ＝ ${resText}`;
+  }
+
+  executeCurrentStep() {
+    this.renderCurrentStep();
+  }
+
+  onStepFinished() {
+    if (!this.isPlaying) return;
+
+    if (this.currentStep === 3) {
+      // Step 3 reached & spoken completely -> Force auto pause until student inputs answer on the right
+      this.pause();
+      this.btnPlayPause.textContent = '⏸️ 思考中（請於右側輸入答案）';
+      return;
+    }
+
+    if (this.currentStep < this.totalSteps) {
+      this.currentStep++;
+      this.executeCurrentStep();
+    } else {
+      this.pause();
+      this.btnPlayPause.textContent = '🔄 重播動畫';
+    }
+  }
+
+  unlockAndRevealAnswer() {
+    this.isAnswerRevealed = true;
+    this.pause();
+    this.currentStep = 4;
+    this.updateFormulaBanner(true);
+    this.executeCurrentStep();
+  }
+
+  revealAnswer() {
+    this.unlockAndRevealAnswer();
+  }
+
+  renderCurrentStep() {
+    if (!this.currentProblem) return;
+
+    const { num1, num2, op, result } = this.currentProblem;
+    const theme = this.themes[this.currentTheme];
+
+    this.stage.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'anim-stage-content';
+    this.stage.appendChild(container);
+
+    if (op === 'add') {
+      this.renderAdditionStep(container, num1, num2, result, theme);
+    } else {
+      this.renderSubtractionStep(container, num1, num2, result, theme);
+    }
+  }
+
+  // --- Addition Animation Steps ---
+  renderAdditionStep(container, num1, num2, result, theme) {
+    if (this.currentStep === 0) {
+      // Step 0: Initial state - No result shown or spoken
+      this.updateFormulaBanner(false);
+      const text = `我們要來算：${num1} 加 ${num2} 等於多少呢？準備好了嗎？點選播放一起看！`;
+      this.setNarrator(text);
+      this.playSound('ding');
+      this.speak(text, () => this.onStepFinished());
+
+      const previewBox = document.createElement('div');
+      previewBox.innerHTML = `
+        <div style="font-size: 2.2rem; font-weight: 900; color: #1864ab; text-align: center;">
+          ${theme.icon} ${num1} 個 ＋ ${theme.icon} ${num2} 個 ＝ ？
+        </div>
+      `;
+      container.appendChild(previewBox);
+
+    } else if (this.currentStep === 1) {
+      // Step 1: Group 1 appears
+      this.updateFormulaBanner(false);
+      const countList = Array.from({length: num1}, (_, i) => i + 1);
+      const countStr = num1 === 0 ? '0 顆' : countList.join('、');
+      const text = `第一步：先拿出 ${num1} 顆${theme.name}！我們來數：${countStr}！`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      const group1 = this.createItemGroup(num1, theme.icon, 1, 'appear');
+      container.appendChild(group1);
+
+      this.staggerPopSound(num1);
+
+    } else if (this.currentStep === 2) {
+      // Step 2: Show addition and second group
+      this.updateFormulaBanner(false);
+      const text = `第二步：加上 ${num2} 顆${theme.name}！又來了 ${num2} 顆！`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      const group1 = this.createItemGroup(num1, theme.icon, 1);
+      const opEl = document.createElement('div');
+      opEl.className = 'anim-operator';
+      opEl.textContent = '＋';
+      const group2 = this.createItemGroup(num2, theme.icon, 1, 'appear');
+
+      container.appendChild(group1);
+      container.appendChild(opEl);
+      container.appendChild(group2);
+
+      this.playSound('ding');
+      this.staggerPopSound(num2);
+
+    } else if (this.currentStep === 3) {
+      // Step 3: Question step - Do NOT reveal result
+      this.updateFormulaBanner(false);
+      const text = `第三步：${num1} 加 ${num2} 合在一起總共有幾個呢？請數一數，也可以在右邊輸入答案喔！`;
+      this.setNarrator(text);
+      // Spoken text is 100% identical to UI narrator text
+      this.speak(text, () => this.onStepFinished());
+
+      const uncountedGroup = this.createUncountedItemGroup(result, theme.icon);
+      container.appendChild(uncountedGroup);
+
+      const hintEl = document.createElement('div');
+      hintEl.style.cssText = 'width: 100%; text-align: center; font-size: 1.15rem; font-weight: 700; color: #1864ab; margin-top: 8px;';
+      hintEl.textContent = '💭 數數看合在一起總共有幾個？請在右邊輸入答案喔！';
+      container.appendChild(hintEl);
+
+      this.playSound('ding');
+
+    } else if (this.currentStep === 4) {
+      // Step 4: Announce Answer!
+      this.updateFormulaBanner(true);
+      const text = `第四步：公布答案！一共有 ${result} 個！${num1} 加 ${num2} 等於 ${result}！🎉`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      const combinedGroup = this.createItemGroup(result, theme.icon, 1);
+      container.appendChild(combinedGroup);
+
+      this.playSound('fanfare');
+    }
+  }
+
+  // --- Subtraction Animation Steps ---
+  renderSubtractionStep(container, num1, num2, result, theme) {
+    if (this.currentStep === 0) {
+      // Step 0: Ready - No result shown or spoken
+      this.updateFormulaBanner(false);
+      const text = `我們要來算：${num1} 減 ${num2} 等於多少呢？看減法是怎麼變少的喔！`;
+      this.setNarrator(text);
+      this.playSound('ding');
+      this.speak(text, () => this.onStepFinished());
+
+      const previewBox = document.createElement('div');
+      previewBox.innerHTML = `
+        <div style="font-size: 2.2rem; font-weight: 900; color: #d9480f; text-align: center;">
+          原本有 ${theme.icon} ${num1} 個，要拿走 ${num2} 個，還剩多少呢？
+        </div>
+      `;
+      container.appendChild(previewBox);
+
+    } else if (this.currentStep === 1) {
+      // Step 1: Initial full group
+      this.updateFormulaBanner(false);
+      const countList = Array.from({length: num1}, (_, i) => i + 1);
+      const countStr = num1 === 0 ? '0 顆' : countList.join('、');
+      const text = `第一步：原本一共有 ${num1} 顆${theme.name}！我們來數：${countStr}！`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      const group = this.createItemGroup(num1, theme.icon, 1, 'appear');
+      container.appendChild(group);
+
+      this.staggerPopSound(num1);
+
+    } else if (this.currentStep === 2) {
+      // Step 2: Subtracting (cross out)
+      this.updateFormulaBanner(false);
+      const text = `第二步：減掉 ${num2} 顆！我們把 ${num2} 顆拿走畫叉叉 ❌！`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      const group = document.createElement('div');
+      group.className = 'anim-group';
+
+      const remainCount = num1 - num2;
+      for (let i = 1; i <= num1; i++) {
+        const item = document.createElement('div');
+        item.className = 'anim-item';
+        item.textContent = theme.icon;
+
+        const badge = document.createElement('span');
+        badge.className = 'item-badge';
+        badge.textContent = i;
+        item.appendChild(badge);
+
+        if (i > remainCount) {
+          item.classList.add('crossed-out');
+        }
+        group.appendChild(item);
+      }
+      container.appendChild(group);
+
+      this.playSound('woosh');
+
+    } else if (this.currentStep === 3) {
+      // Step 3: Question step - Split per request: "8減5剩下幾個?" (No result shown or spoken)
+      this.updateFormulaBanner(false);
+      const text = `第三步：${num1} 減 ${num2} 剩下幾個呢？請數一數，也可以在右邊輸入答案喔！`;
+      this.setNarrator(text);
+      // Spoken text is 100% identical to UI narrator text
+      this.speak(text, () => this.onStepFinished());
+
+      const uncountedGroup = this.createUncountedItemGroup(result, theme.icon);
+      container.appendChild(uncountedGroup);
+
+      const hintEl = document.createElement('div');
+      hintEl.style.cssText = 'width: 100%; text-align: center; font-size: 1.15rem; font-weight: 700; color: #d9480f; margin-top: 8px;';
+      hintEl.textContent = `💭 數數看剩下幾個？請在右邊輸入答案喔！`;
+      container.appendChild(hintEl);
+
+      this.playSound('ding');
+
+    } else if (this.currentStep === 4) {
+      // Step 4: Announce Answer per request: "公布答案: 剩下3個 ... 8減5等於3"
+      this.updateFormulaBanner(true);
+      const text = `第四步：公布答案！剩下 ${result} 個！${num1} 減 ${num2} 等於 ${result}！🎉`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      const group = document.createElement('div');
+      group.className = 'anim-group';
+      for (let i = 1; i <= result; i++) {
+        const item = document.createElement('div');
+        item.className = 'anim-item highlight-count';
+        item.textContent = theme.icon;
+        const badge = document.createElement('span');
+        badge.className = 'item-badge';
+        badge.textContent = i;
+        item.appendChild(badge);
+        group.appendChild(item);
+      }
+
+      if (result === 0) {
+        const zeroMsg = document.createElement('div');
+        zeroMsg.style.fontSize = '1.8rem';
+        zeroMsg.style.fontWeight = '900';
+        zeroMsg.style.color = '#e03131';
+        zeroMsg.textContent = '全部都拿走了，剩下 0 個！';
+        group.appendChild(zeroMsg);
+      }
+
+      container.appendChild(group);
+      this.playSound('fanfare');
+    }
+  }
+
+  // Create items with '?' badges for thinking/question step without revealing count
+  createUncountedItemGroup(count, icon) {
+    const group = document.createElement('div');
+    group.className = 'anim-group';
+
+    if (count === 0) {
+      const zeroEl = document.createElement('div');
+      zeroEl.style.fontSize = '1.3rem';
+      zeroEl.style.fontWeight = '700';
+      zeroEl.style.color = '#868e96';
+      zeroEl.textContent = '？ 顆 (空)';
+      group.appendChild(zeroEl);
+      return group;
+    }
+
+    for (let i = 0; i < count; i++) {
+      const item = document.createElement('div');
+      item.className = 'anim-item highlight-count';
+      item.textContent = icon;
+
+      const badge = document.createElement('span');
+      badge.className = 'item-badge';
+      badge.style.background = '#4dabf7';
+      badge.textContent = '?';
+      item.appendChild(badge);
+
+      group.appendChild(item);
+    }
+    return group;
+  }
+
+  revealAnswer() {
+    this.goToStep(4);
+  }
+
+  goToStep(step) {
+    this.pause();
+    this.currentStep = Math.min(step, this.totalSteps);
+    this.renderCurrentStep();
+  }
+
+  createItemGroup(count, icon, startIdx = 1, extraClass = '') {
+    const group = document.createElement('div');
+    group.className = 'anim-group';
+
+    if (count === 0) {
+      const zeroEl = document.createElement('div');
+      zeroEl.style.fontSize = '1.3rem';
+      zeroEl.style.fontWeight = '700';
+      zeroEl.style.color = '#868e96';
+      zeroEl.textContent = '0 顆 (空)';
+      group.appendChild(zeroEl);
+      return group;
+    }
+
+    for (let i = 0; i < count; i++) {
+      const item = document.createElement('div');
+      item.className = `anim-item ${extraClass}`;
+      item.textContent = icon;
+
+      const badge = document.createElement('span');
+      badge.className = 'item-badge';
+      badge.textContent = startIdx + i;
+      item.appendChild(badge);
+
+      group.appendChild(item);
+    }
+    return group;
+  }
+
+  setNarrator(text) {
+    this.narratorText.textContent = text;
+  }
+
+  staggerPopSound(count) {
+    if (this.soundMuted || count <= 0) return;
+    for (let i = 0; i < Math.min(count, 10); i++) {
+      setTimeout(() => {
+        this.playSound('pop');
+      }, i * 120);
+    }
+  }
+
+  staggerDingSound(count) {
+    if (this.soundMuted || count <= 0) return;
+    for (let i = 0; i < Math.min(count, 10); i++) {
+      setTimeout(() => {
+        this.playSound('ding');
+      }, i * 150);
+    }
+  }
+}
+
+// Global instance initialization
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.flashAnimator) {
+      window.flashAnimator = new FlashMathAnimator();
+    }
+  });
+} else {
+  if (!window.flashAnimator) {
+    window.flashAnimator = new FlashMathAnimator();
+  }
+}
