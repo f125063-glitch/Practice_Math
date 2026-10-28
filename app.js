@@ -589,7 +589,18 @@ class MathApp {
       this.recognition.lang = 'zh-TW';
       this.recognition.continuous = false;
       this.recognition.interimResults = true;
-      this.recognition.maxAlternatives = 3;
+      this.recognition.maxAlternatives = 10;
+
+      // Add speech grammar hint for numbers 0~10 if supported
+      const SpeechGrammarList = window.SpeechGrammarList || window.webkitSpeechGrammarList;
+      if (SpeechGrammarList) {
+        try {
+          const grammarList = new SpeechGrammarList();
+          const grammar = '#JSGF V1.0; grammar numbers; public <number> = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 零 | 一 | 二 | 兩 | 三 | 四 | 五 | 六 | 七 | 八 | 九 | 十 | 等於 | 答案是 ;';
+          grammarList.addFromString(grammar, 1);
+          this.recognition.grammars = grammarList;
+        } catch (e) {}
+      }
 
       this.recognition.onstart = () => {
         this.isRecognizing = true;
@@ -603,12 +614,21 @@ class MathApp {
       this.recognition.onresult = (event) => {
         let interimTranscript = '';
         let finalTranscript = '';
+        const candidates = [];
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+          const res = event.results[i];
+          if (res.isFinal) {
+            if (res[0] && res[0].transcript) {
+              finalTranscript += res[0].transcript;
+            }
+            for (let j = 0; j < res.length; j++) {
+              if (res[j] && res[j].transcript) {
+                candidates.push(res[j].transcript.trim());
+              }
+            }
           } else {
-            interimTranscript += event.results[i][0].transcript;
+            interimTranscript += res[0].transcript;
           }
         }
 
@@ -616,20 +636,18 @@ class MathApp {
           this.showVoiceStatus(`🎙️ 聽到：「${interimTranscript}」...`, 'info', 0);
         }
 
-        if (finalTranscript) {
-          let parsedNum = this.parseSpokenAnswer(finalTranscript);
-
-          // If primary candidate didn't parse, try recognition alternatives
-          if (parsedNum === null && event.results[0] && event.results[0].length > 1) {
-            for (let j = 1; j < event.results[0].length; j++) {
-              parsedNum = this.parseSpokenAnswer(event.results[0][j].transcript);
-              if (parsedNum !== null) break;
-            }
+        if (finalTranscript || candidates.length > 0) {
+          if (finalTranscript && !candidates.includes(finalTranscript.trim())) {
+            candidates.unshift(finalTranscript.trim());
           }
 
-          if (parsedNum !== null) {
+          const resolved = this.resolveBestSpokenAnswer(candidates);
+
+          if (resolved !== null) {
+            const parsedNum = resolved.number;
+            const matchedText = resolved.transcript || finalTranscript;
             this.userAnswerInput.value = parsedNum;
-            this.showVoiceStatus(`✅ 辨識成功：「${finalTranscript}」➔ 答案 ${parsedNum}！正在檢查...`, 'success', 2500);
+            this.showVoiceStatus(`✅ 辨識成功：「${matchedText}」➔ 答案 ${parsedNum}！正在檢查...`, 'success', 2500);
             if (window.flashAnimator && window.flashAnimator.playSound) {
               window.flashAnimator.playSound('pop');
             }
@@ -638,7 +656,7 @@ class MathApp {
               this.checkAnswer();
             }, 500);
           } else {
-            this.showVoiceStatus(`🤔 聽到「${finalTranscript}」，未辨識出有效數字，請再試一次～`, 'warn', 3000);
+            this.showVoiceStatus(`🤔 聽到「${finalTranscript || candidates[0]}」，未辨識出有效數字，請再試一次～`, 'warn', 3000);
           }
         }
       };
@@ -706,84 +724,180 @@ class MathApp {
     }
   }
 
-  // Parse spoken Traditional Chinese / Mandarin phrases and numbers to integer
-  parseSpokenAnswer(text) {
-    if (!text) return null;
-    let str = text.trim();
+  // Homophones and near-homophones (especially 捲舌/不捲舌, zh/ch/sh vs z/c/s, Taiwan Mandarin accents)
+  getHomophonesMap() {
+    return {
+      // 0: 零 (líng)
+      '0': 0, '零': 0, '〇': 0, '○': 0, '林': 0, '菱': 0, '鈴': 0, '玲': 0, '鄰': 0, '邻': 0, '靈': 0, '灵': 0, '霖': 0, '凌': 0, '陵': 0, '領': 0, '领': 0, '令': 0, '另': 0,
 
-    // 1. Negative sign
+      // 1: 一 (yī), 么 (yāo)
+      '1': 1, '一': 1, '壹': 1, '么': 1, '依': 1, '醫': 1, '医': 1, '衣': 1, '伊': 1, '姨': 1, '移': 1, '儀': 1, '仪': 1, '疑': 1, '已': 1, '以': 1, '意': 1, '易': 1, '億': 1, '亿': 1, '亦': 1, '異': 1, '异': 1, '益': 1, '譯': 1, '译': 1, '逸': 1, '翼': 1, '妖': 1, '腰': 1,
+
+      // 2: 二 (èr), 兩 (liǎng)
+      '2': 2, '二': 2, '貳': 2, '贰': 2, '兩': 2, '两': 2, '兒': 2, '儿': 2, 'ㄦ': 2, '而': 2, '耳': 2, '餌': 2, '饵': 2, '餓': 2, '饿': 2, '惡': 2, '恶': 2, '俄': 2, '鵝': 2, '鹅': 2, '亮': 2, '輛': 2, '辆': 2, '量': 2, '涼': 2, '凉': 2,
+
+      // 3: 三 (sān) - 捲舌/不捲舌: 山 (shān - user specified), 衫, 珊, 杉, 扇, 散, 傘, 參, 叁
+      '3': 3, '三': 3, '參': 3, '参': 3, '叁': 3, '山': 3, '衫': 3, '珊': 3, '杉': 3, '扇': 3, '散': 3, '傘': 3, '伞': 3, '刪': 3, '删': 3, '姍': 3, '姗': 3, '煽': 3, '桑': 3, '傷': 3, '伤': 3, '商': 3,
+
+      // 4: 四 (sì) - 捲舌/不捲舌: 是 (shì - user specified), 事, 市, 士, 世, 式, 視, 室, 試, 寺, 似, 肆, 賜, 死, 司, 思, 私, 斯
+      '4': 4, '四': 4, '肆': 4, '是': 4, '事': 4, '市': 4, '士': 4, '世': 4, '式': 4, '視': 4, '视': 4, '室': 4, '試': 4, '试': 4, '寺': 4, '似': 4, '賜': 4, '赐': 4, '死': 4, '司': 4, '思': 4, '私': 4, '斯': 4, '絲': 4, '丝': 4, '飼': 4, '饲': 4, '刺': 4, '伺': 4,
+
+      // 5: 五 (wǔ)
+      '5': 5, '五': 5, '伍': 5, '武': 5, '午': 5, '舞': 5, '屋': 5, '烏': 5, '乌': 5, '物': 5, '誤': 5, '误': 5, '霧': 5, '雾': 5, '悟': 5, '無': 5, '无': 5, '吳': 5, '吴': 5, '侮': 5,
+
+      // 6: 六 (liù)
+      '6': 6, '六': 6, '陸': 6, '陆': 6, '溜': 6, '流': 6, '留': 6, '柳': 6, '樓': 6, '楼': 6, '露': 6, '路': 6, '綠': 6, '绿': 6, '碌': 6, '劉': 6, '刘': 6,
+
+      // 7: 七 (qī)
+      '7': 7, '七': 7, '柒': 7, '漆': 7, '期': 7, '妻': 7, '欺': 7, '奇': 7, '騎': 7, '骑': 7, '乞': 7, '氣': 7, '气': 7, '器': 7, '起': 7, '企': 7, '凄': 7, '淒': 7,
+
+      // 8: 八 (bā)
+      '8': 8, '八': 8, '捌': 8, '吧': 8, '爸': 8, '巴': 8, '拔': 8, '把': 8, '霸': 8, '芭': 8, '靶': 8, '發': 8, '发': 8,
+
+      // 9: 九 (jiǔ)
+      '9': 9, '九': 9, '玖': 9, '酒': 9, '久': 9, '韭': 9, '舅': 9, '就': 9, '救': 9, '舊': 9, '旧': 9, '糾': 9, '纠': 9,
+
+      // 10: 十 (shí)
+      '10': 10, '十': 10, '拾': 10, '石': 10, '時': 10, '时': 10, '食': 10, '實': 10, '实': 10, '識': 10, '识': 10, '什': 10, '史': 10, '使': 10, '始': 10
+    };
+  }
+
+  // Parse candidate string with priority (1: Arabic 0~10, 1.5: standard Chinese 0~10, 2: Arabic >10, 2.5: Chinese >10, 3: homophones)
+  parseCandidateWithPriority(text) {
+    if (!text) return null;
+    let raw = text.trim();
     let isNegative = false;
-    if (/^(負|负|-)/.test(str)) {
+    if (/^(負|负|-)/.test(raw)) {
       isNegative = true;
-      str = str.replace(/^(負|负|-)/, '').trim();
+      raw = raw.replace(/^(負|负|-)/, '').trim();
     }
 
-    // 2. Direct Arabic numeral match (e.g. "5", "12", "答案是 8", "等於3")
-    const digitMatch = str.match(/\d+/);
+    // Check 1: Direct Arabic numeral match (0~10 priority)
+    const digitMatch = raw.match(/\d+/);
     if (digitMatch) {
       const val = parseInt(digitMatch[0], 10);
-      return isNegative ? -val : val;
+      const num = isNegative ? -val : val;
+      // Requirement 1: Priority 1 if in 0~10 range, Priority 2 for other numbers
+      const priority = (val >= 0 && val <= 10) ? 1 : 2;
+      return { number: num, priority: priority };
     }
 
-    // 3. Remove common spoken prefixes and suffixes
-    str = str.replace(/^(答案是|答案為|等於|等于|算出來是|我覺得是|我想是|答案|是)/, '');
-    str = str.replace(/(顆|个|個|隻|把|條|點|啦|呢|喔|啊|吧|！|。|\.)$/g, '');
-    str = str.trim();
+    let cleaned = raw;
 
-    // 4. Map of Chinese numerals
-    const cnDigits = {
-      '零': 0, '〇': 0, '○': 0, 'O': 0, 'o': 0,
-      '一': 1, '壹': 1, '么': 1,
-      '二': 2, '貳': 2, '兩': 2, '两': 2,
-      '三': 3, '參': 3, '叁': 3,
-      '四': 4, '肆': 4,
-      '五': 5, '伍': 5,
-      '六': 6, '陸': 6,
-      '七': 7, '柒': 7,
-      '八': 8, '捌': 8,
-      '九': 9, '玖': 9
+    // Suffixes first: remove particles like 啦, 顆, 個, etc.
+    cleaned = cleaned.replace(/(顆|个|個|隻|把|條|點|啦|呢|喔|啊|吧|！|。|\.)$/g, '').trim();
+
+    // Prefixes with lookahead:
+    // If phrase ends with '是', only strip '是' if there is content after it!
+    const prefixPattern = /^(答案等於|答案為|答案是(?=.)|算出來等於|算出來是(?=.)|算出來|我覺得等於|我覺得是(?=.)|我覺得|我想等於|我想是(?=.)|我想|我猜等於|我猜是(?=.)|我猜|應該等於|應該是(?=.)|應該|結果等於|結果是(?=.)|結果|就是等於|就是|等於是(?=.)|等於|等于|答案)/;
+    cleaned = cleaned.replace(prefixPattern, '').trim();
+
+    // If "是" is followed by any character (and not alone), strip "是" as copula verb "is"
+    cleaned = cleaned.replace(/^是(?=.)/, '').trim();
+
+    // Check 2: Exact single standard Chinese digit
+    const stdCnDigits = {
+      '零': 0, '〇': 0, '○': 0, '0': 0,
+      '一': 1, '壹': 1, '么': 1, '1': 1,
+      '二': 2, '貳': 2, '兩': 2, '两': 2, '2': 2,
+      '三': 3, '參': 3, '叁': 3, '3': 3,
+      '四': 4, '肆': 4, '4': 4,
+      '五': 5, '伍': 5, '5': 5,
+      '六': 6, '陸': 6, '6': 6,
+      '七': 7, '柒': 7, '7': 7,
+      '八': 8, '捌': 8, '8': 8,
+      '九': 9, '玖': 9, '9': 9,
+      '十': 10, '拾': 10, '10': 10
     };
 
-    // Direct single numeral
-    if (cnDigits[str] !== undefined) {
-      const val = cnDigits[str];
-      return isNegative ? -val : val;
+    if (stdCnDigits[cleaned] !== undefined) {
+      const val = stdCnDigits[cleaned];
+      return { number: isNegative ? -val : val, priority: 1.5 };
     }
 
-    // Multi-digit Chinese numbers (e.g. "十一" -> 11, "二十三" -> 23, "一百二十三" -> 123)
-    let total = 0;
-    let hasMatched = false;
+    // Check 3: Standard multi-digit Chinese numbers (e.g. 十一 -> 11, 二十三 -> 23)
+    if (/[百十]/.test(cleaned) || cleaned.length >= 2) {
+      let total = 0;
+      let hasMatched = false;
+      let s = cleaned;
 
-    // Hundreds
-    const baiMatch = str.match(/([零一二兩两三四五六七八九])百/);
-    if (baiMatch) {
-      total += (cnDigits[baiMatch[1]] || 0) * 100;
-      hasMatched = true;
-      str = str.replace(/.*百/, '');
+      const baiMatch = s.match(/([零一二兩两三四五六七八九])百/);
+      if (baiMatch) {
+        total += (stdCnDigits[baiMatch[1]] || 0) * 100;
+        hasMatched = true;
+        s = s.replace(/.*百/, '');
+      }
+
+      const shiMatch = s.match(/([零一二兩两三四五六七八九])?十/);
+      if (shiMatch) {
+        const mul = shiMatch[1] ? (stdCnDigits[shiMatch[1]] || 1) : 1;
+        total += mul * 10;
+        hasMatched = true;
+        s = s.replace(/.*十/, '');
+      }
+
+      s = s.replace(/[零〇○O0o]/g, '');
+      const unitMatch = s.match(/([一二兩两三四五六七八九])/);
+      if (unitMatch) {
+        total += stdCnDigits[unitMatch[1]] || 0;
+        hasMatched = true;
+      }
+
+      if (hasMatched) {
+        return { number: isNegative ? -total : total, priority: 2.5 };
+      }
     }
 
-    // Tens
-    const shiMatch = str.match(/([零一二兩两三四五六七八九])?十/);
-    if (shiMatch) {
-      const multiplier = shiMatch[1] ? (cnDigits[shiMatch[1]] || 1) : 1;
-      total += multiplier * 10;
-      hasMatched = true;
-      str = str.replace(/.*十/, '');
+    // Check 4: Homophone / near-homophone matching for 0~10 (e.g. 是->4, 山->3, 石->10, etc.)
+    const homophones = this.getHomophonesMap();
+    if (homophones[cleaned] !== undefined) {
+      const val = homophones[cleaned];
+      return { number: isNegative ? -val : val, priority: 3 };
     }
 
-    // Units (remove leading filler 零/〇/○ such as in "一百零五")
-    str = str.replace(/[零〇○O0o]/g, '');
-    const unitMatch = str.match(/([一二兩两三四五六七八九])/);
-    if (unitMatch) {
-      total += cnDigits[unitMatch[1]] || 0;
-      hasMatched = true;
-    }
-
-    if (hasMatched) {
-      return isNegative ? -total : total;
+    // Check 5: Look for any homophone character contained in cleaned if short phrase
+    for (let char of cleaned) {
+      if (homophones[char] !== undefined) {
+        const val = homophones[char];
+        return { number: isNegative ? -val : val, priority: 4 };
+      }
     }
 
     return null;
+  }
+
+  // Resolves the best answer among all recognition alternatives (prioritizing 0~10)
+  resolveBestSpokenAnswer(candidates) {
+    if (!candidates || candidates.length === 0) return null;
+
+    let bestMatch = null;
+    let bestPriority = 999;
+    let bestTranscript = candidates[0];
+
+    for (const text of candidates) {
+      const res = this.parseCandidateWithPriority(text);
+      if (res !== null && res.priority < bestPriority) {
+        bestPriority = res.priority;
+        bestMatch = res.number;
+        bestTranscript = text;
+        // Priority 1 is top priority (direct Arabic digit 0~10)
+        if (bestPriority === 1) break;
+      }
+    }
+
+    if (bestMatch !== null) {
+      return {
+        number: bestMatch,
+        transcript: bestTranscript
+      };
+    }
+    return null;
+  }
+
+  // Parse spoken Traditional Chinese / Mandarin phrases and numbers to integer
+  parseSpokenAnswer(text) {
+    const res = this.resolveBestSpokenAnswer([text]);
+    return res ? res.number : null;
   }
 
   checkAnswer() {
