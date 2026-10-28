@@ -171,8 +171,15 @@
             <span class="equal-sign">＝</span>
             <input type="number" id="userAnswerInput" class="user-answer-input" placeholder="請輸入答案" autocomplete="off" />
           </div>
+          <button type="button" id="btnVoiceInput" class="btn-voice-input" title="點擊後說出答案 (例如: 3、等於五)">
+            <span class="voice-mic-icon">🎙️</span>
+            <span class="voice-btn-text">語音答題</span>
+          </button>
           <button id="btnSubmitAnswer" class="btn-submit-answer">確認送出 🎯</button>
         </div>
+
+        <!-- Voice Recognition Status Banner -->
+        <div class="voice-status-tip" id="voiceStatusTip" style="display: none;"></div>
 
         <!-- Feedback & Praise Alert -->
         <div class="feedback-banner" id="feedbackBanner" style="display: none;">

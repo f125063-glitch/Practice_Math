@@ -38,6 +38,74 @@ class FlashMathAnimator {
   initAudio() {
     this.audioCtx = null;
     this.soundMuted = false;
+    this.voices = [];
+    this.hasUserInteracted = false;
+    this._resumeInterval = null;
+    this.initVoices();
+    this.setupUserUnlock();
+  }
+
+  // Pre-load and listen for available system TTS voices (Android Chrome loads voices asynchronously)
+  initVoices() {
+    if ('speechSynthesis' in window) {
+      this.voices = window.speechSynthesis.getVoices() || [];
+      window.speechSynthesis.onvoiceschanged = () => {
+        this.voices = window.speechSynthesis.getVoices() || [];
+      };
+    }
+  }
+
+  // Setup user gesture unlock on first touch/click (Crucial for Android Chrome & Sony Xperia)
+  setupUserUnlock() {
+    const unlock = () => {
+      this.hasUserInteracted = true;
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.resume();
+        if (!this.voices || this.voices.length === 0) {
+          this.voices = window.speechSynthesis.getVoices() || [];
+        }
+      }
+      ['click', 'touchstart', 'touchend', 'keydown'].forEach(evt => {
+        document.removeEventListener(evt, unlock, true);
+      });
+    };
+    ['click', 'touchstart', 'touchend', 'keydown'].forEach(evt => {
+      document.addEventListener(evt, unlock, { capture: true, once: false });
+    });
+  }
+
+  // Find best matching Traditional Chinese / Mandarin voice across Android (Google Speech Services), iOS, and PC
+  getChineseVoice() {
+    if (!this.voices || this.voices.length === 0) {
+      if ('speechSynthesis' in window) {
+        this.voices = window.speechSynthesis.getVoices() || [];
+      }
+    }
+    const list = this.voices || [];
+    if (list.length === 0) return null;
+
+    // 1. Exact or common Taiwan / Traditional Chinese tags (Android uses cmn-Hant-TW or cmn-TW; iOS/PC uses zh-TW)
+    let v = list.find(voice => /^(zh[-_]TW|cmn[-_]Hant[-_]TW|cmn[-_]TW)$/i.test(voice.lang));
+    if (v) return v;
+
+    // 2. Any voice mentioning Taiwan or TW in name or language
+    v = list.find(voice => /TW|Taiwan/i.test((voice.lang || '') + ' ' + (voice.name || '')));
+    if (v) return v;
+
+    // 3. Hong Kong / Cantonese as fallback Chinese
+    v = list.find(voice => /^(zh[-_]HK|yue[-_]Hant[-_]HK)$/i.test(voice.lang));
+    if (v) return v;
+
+    // 4. Any Mandarin / Chinese voice starting with zh or cmn
+    v = list.find(voice => /^(zh|cmn)/i.test(voice.lang));
+    if (v) return v;
+
+    // 5. Any voice containing "chinese" or "mandarin" in name
+    v = list.find(voice => /chinese|mandarin/i.test((voice.name || '') + ' ' + (voice.lang || '')));
+    return v || null;
   }
 
   getAudioContext() {
@@ -114,11 +182,6 @@ class FlashMathAnimator {
     this.lastSpokenText = text;
     this.lastSpeechCallback = onEndCallback;
 
-    // Stop any pending speech immediately
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-
     if (!this.speechEnabled || !('speechSynthesis' in window)) {
       // If speech is disabled, fallback to delay proportional to text length
       const fallbackDelay = Math.max(2000, text.length * 150) / this.speedMultiplier;
@@ -128,54 +191,93 @@ class FlashMathAnimator {
       return;
     }
 
-    try {
-      const cleanText = this.formatSpeech(text);
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = 'zh-TW';
-      // Clearly differentiated speech rate for 慢速 vs 1.0x
-      utterance.rate = this.speedMultiplier <= 0.75 ? 0.6 : 1.0;
-      utterance.pitch = 1.05;
+    const performSpeak = () => {
+      try {
+        // Ensure SpeechSynthesis is active and resumed (Android Chrome often suspends it)
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.resume();
+        }
 
-      // Select available Chinese voice
-      const voices = window.speechSynthesis.getVoices();
-      if (voices && voices.length > 0) {
-        const zhVoice = voices.find(v => v.lang === 'zh-TW') ||
-                        voices.find(v => v.lang.startsWith('zh'));
+        const cleanText = this.formatSpeech(text);
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+
+        // Assign matched voice and appropriate language tag
+        const zhVoice = this.getChineseVoice();
         if (zhVoice) {
           utterance.voice = zhVoice;
+          utterance.lang = zhVoice.lang || 'zh-TW';
+        } else {
+          utterance.lang = 'zh-TW';
         }
-      }
 
-      let called = false;
-      const finish = () => {
-        if (called) return;
-        called = true;
-        if (onEndCallback) {
-          if (this.isPlaying) {
-            // Pause slightly after reading before continuing
-            this.timer = setTimeout(() => {
-              if (this.isPlaying) onEndCallback();
-            }, 600 / this.speedMultiplier);
-          } else {
-            // When not playing (e.g. Step 0 intro narration), call callback immediately
-            onEndCallback();
+        // Differentiated speech rate for 慢速 vs 1.0x (keep in safe range 0.7~1.0 for Android TTS stability)
+        utterance.rate = this.speedMultiplier <= 0.75 ? 0.72 : 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        let called = false;
+        const finish = () => {
+          if (called) return;
+          called = true;
+          window.__activeSpeechUtterance = null;
+          if (this._resumeInterval) {
+            clearInterval(this._resumeInterval);
+            this._resumeInterval = null;
           }
-        }
-      };
+          if (onEndCallback) {
+            if (this.isPlaying) {
+              // Pause slightly after reading before continuing to next step
+              this.timer = setTimeout(() => {
+                if (this.isPlaying) onEndCallback();
+              }, 600 / this.speedMultiplier);
+            } else {
+              // When not playing (e.g. Step 0 intro narration), call callback immediately
+              onEndCallback();
+            }
+          }
+        };
 
-      utterance.onend = finish;
-      utterance.onerror = (e) => {
-        // If utterance was intentionally canceled/interrupted by pause button, don't trigger callback
-        if (e.error !== 'canceled' && e.error !== 'interrupted') {
-          finish();
-        }
-      };
+        utterance.onend = finish;
+        utterance.onerror = (e) => {
+          console.warn('SpeechSynthesis error:', e.error || e);
+          // If utterance was intentionally canceled/interrupted by pause button, don't trigger callback
+          if (e.error !== 'canceled' && e.error !== 'interrupted') {
+            finish();
+          }
+        };
 
-      this.currentUtterance = utterance;
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('Speech synthesis error:', e);
-      if (onEndCallback) onEndCallback();
+        // Workaround for Chrome/Android bug: prevent garbage collection of utterance mid-speech
+        window.__activeSpeechUtterance = utterance;
+        this.currentUtterance = utterance;
+
+        window.speechSynthesis.speak(utterance);
+
+        // Workaround for Chrome/Android bug where long speech pauses or freezes silently
+        if (this._resumeInterval) clearInterval(this._resumeInterval);
+        this._resumeInterval = setInterval(() => {
+          if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+            window.speechSynthesis.resume();
+          } else {
+            clearInterval(this._resumeInterval);
+            this._resumeInterval = null;
+          }
+        }, 800);
+
+      } catch (e) {
+        console.warn('Speech synthesis error in performSpeak:', e);
+        if (onEndCallback) onEndCallback();
+      }
+    };
+
+    // Sony Android & Chrome fix:
+    // If speech is currently ongoing, cancel it, but WAIT 60ms before speaking again.
+    // In Android Chrome, calling cancel() immediately followed synchronously by speak()
+    // causes the native Android TTS binder to cancel the new utterance!
+    if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+      window.speechSynthesis.cancel();
+      setTimeout(performSpeak, 60);
+    } else {
+      performSpeak();
     }
   }
 
@@ -344,6 +446,7 @@ class FlashMathAnimator {
   }
 
   play() {
+    this.hasUserInteracted = true;
     if (this.isSpeakingIntro) return;
 
     if (this.currentStep === 3 && !this.isAnswerRevealed) {
@@ -489,14 +592,20 @@ class FlashMathAnimator {
       this.playSound('ding');
 
       // Requirement a: 旁白朗讀時，“播放動畫”和"上一步"反灰且無法使用
-      this.isSpeakingIntro = true;
-      this.updateButtonStates();
-
-      this.speak(text, () => {
-        // Requirement b: 旁白朗讀結束後，“播放動畫”按鈕才能使用(顏色恢復)
+      // 針對手機版 (如 Android/Sony)：若尚未有使用者手勢觸發，先不鎖定按鈕，等待使用者點擊播放以解鎖語音
+      if (!this.hasUserInteracted) {
         this.isSpeakingIntro = false;
         this.updateButtonStates();
-      });
+      } else {
+        this.isSpeakingIntro = true;
+        this.updateButtonStates();
+
+        this.speak(text, () => {
+          // Requirement b: 旁白朗讀結束後，“播放動畫”按鈕才能使用(顏色恢復)
+          this.isSpeakingIntro = false;
+          this.updateButtonStates();
+        });
+      }
 
       const previewBox = document.createElement('div');
       previewBox.innerHTML = `
@@ -582,14 +691,20 @@ class FlashMathAnimator {
       this.playSound('ding');
 
       // Requirement a: 旁白朗讀時，“播放動畫”和"上一步"反灰且無法使用
-      this.isSpeakingIntro = true;
-      this.updateButtonStates();
-
-      this.speak(text, () => {
-        // Requirement b: 旁白朗讀結束後，“播放動畫”按鈕才能使用(顏色恢復)
+      // 針對手機版 (如 Android/Sony)：若尚未有使用者手勢觸發，先不鎖定按鈕，等待使用者點擊播放以解鎖語音
+      if (!this.hasUserInteracted) {
         this.isSpeakingIntro = false;
         this.updateButtonStates();
-      });
+      } else {
+        this.isSpeakingIntro = true;
+        this.updateButtonStates();
+
+        this.speak(text, () => {
+          // Requirement b: 旁白朗讀結束後，“播放動畫”按鈕才能使用(顏色恢復)
+          this.isSpeakingIntro = false;
+          this.updateButtonStates();
+        });
+      }
 
       const previewBox = document.createElement('div');
       previewBox.innerHTML = `

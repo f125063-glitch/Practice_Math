@@ -59,6 +59,13 @@ class MathApp {
     this.columnMathBody = document.getElementById('columnMathBody');
     this.toggleArrow = document.getElementById('toggleArrow');
 
+    // Voice Input Elements & State
+    this.btnVoiceInput = document.getElementById('btnVoiceInput');
+    this.voiceStatusTip = document.getElementById('voiceStatusTip');
+    this.recognition = null;
+    this.isRecognizing = false;
+    this._voiceTipTimer = null;
+
     this.bindEvents();
     this.init();
   }
@@ -112,6 +119,17 @@ class MathApp {
         this.checkAnswer();
       }
     });
+
+    // Voice recognition answer input
+    if (this.btnVoiceInput) {
+      this.btnVoiceInput.addEventListener('click', () => {
+        if (this.isRecognizing) {
+          this.stopVoiceRecognition();
+        } else {
+          this.startVoiceRecognition();
+        }
+      });
+    }
 
     this.btnNewProblem.addEventListener('click', () => {
       this.generateNewProblem();
@@ -247,6 +265,13 @@ class MathApp {
   }
 
   generateNewProblem() {
+    if (this.isRecognizing) {
+      this.stopVoiceRecognition();
+    }
+    if (this.voiceStatusTip) {
+      this.voiceStatusTip.style.display = 'none';
+    }
+
     const { operation, itemsCount, digits } = this.config;
     let numbers = [];
 
@@ -448,6 +473,222 @@ class MathApp {
       stepsHtml += `最終結果 ＝ <strong style="color: #2b8a3e; font-size: 1.3rem;">${currentVal}</strong></div>`;
       this.columnMathBody.innerHTML = stepsHtml;
     }
+  }
+
+  // ==========================================
+  // Voice Recognition (語音辨識輸入答案)
+  // ==========================================
+  startVoiceRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      this.showVoiceStatus('⚠️ 您的瀏覽器不支援語音辨識功能，請直接使用虛擬數字鍵盤輸入！', 'warn', 4000);
+      return;
+    }
+
+    try {
+      if (this.recognition) {
+        try { this.recognition.abort(); } catch (e) {}
+      }
+
+      this.recognition = new SpeechRecognition();
+      this.recognition.lang = 'zh-TW';
+      this.recognition.continuous = false;
+      this.recognition.interimResults = true;
+      this.recognition.maxAlternatives = 3;
+
+      this.recognition.onstart = () => {
+        this.isRecognizing = true;
+        if (this.btnVoiceInput) {
+          this.btnVoiceInput.classList.add('listening');
+          this.btnVoiceInput.innerHTML = `<span class="voice-mic-icon">🔴</span><span class="voice-btn-text">聆聽中...</span>`;
+        }
+        this.showVoiceStatus('🎙️ 正在聆聽中... 請說出你的答案（例如：「3」、「等於五」）', 'info', 0);
+      };
+
+      this.recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        if (interimTranscript) {
+          this.showVoiceStatus(`🎙️ 聽到：「${interimTranscript}」...`, 'info', 0);
+        }
+
+        if (finalTranscript) {
+          let parsedNum = this.parseSpokenAnswer(finalTranscript);
+
+          // If primary candidate didn't parse, try recognition alternatives
+          if (parsedNum === null && event.results[0] && event.results[0].length > 1) {
+            for (let j = 1; j < event.results[0].length; j++) {
+              parsedNum = this.parseSpokenAnswer(event.results[0][j].transcript);
+              if (parsedNum !== null) break;
+            }
+          }
+
+          if (parsedNum !== null) {
+            this.userAnswerInput.value = parsedNum;
+            this.showVoiceStatus(`✅ 辨識成功：「${finalTranscript}」➔ 答案 ${parsedNum}！正在檢查...`, 'success', 2500);
+            if (window.flashAnimator && window.flashAnimator.playSound) {
+              window.flashAnimator.playSound('pop');
+            }
+            // Auto submit answer after a short pause so student sees the confirmed answer
+            setTimeout(() => {
+              this.checkAnswer();
+            }, 500);
+          } else {
+            this.showVoiceStatus(`🤔 聽到「${finalTranscript}」，未辨識出有效數字，請再試一次～`, 'warn', 3000);
+          }
+        }
+      };
+
+      this.recognition.onerror = (event) => {
+        console.warn('SpeechRecognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          this.showVoiceStatus('⚠️ 請允許瀏覽器存取麥克風權限才能語音答題喔！', 'error', 4500);
+        } else if (event.error === 'no-speech') {
+          this.showVoiceStatus('💭 沒有偵測到聲音，請點擊按鈕再試一次！', 'warn', 2500);
+        } else if (event.error !== 'aborted') {
+          this.showVoiceStatus(`⚠️ 辨識發生問題 (${event.error})，請再試一次`, 'warn', 2500);
+        }
+      };
+
+      this.recognition.onend = () => {
+        this.isRecognizing = false;
+        if (this.btnVoiceInput) {
+          this.btnVoiceInput.classList.remove('listening');
+          this.btnVoiceInput.innerHTML = `<span class="voice-mic-icon">🎙️</span><span class="voice-btn-text">語音答題</span>`;
+        }
+      };
+
+      this.recognition.start();
+    } catch (e) {
+      console.warn('SpeechRecognition start failed:', e);
+      this.isRecognizing = false;
+      if (this.btnVoiceInput) {
+        this.btnVoiceInput.classList.remove('listening');
+        this.btnVoiceInput.innerHTML = `<span class="voice-mic-icon">🎙️</span><span class="voice-btn-text">語音答題</span>`;
+      }
+    }
+  }
+
+  stopVoiceRecognition() {
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch (e) {}
+    }
+    this.isRecognizing = false;
+    if (this.btnVoiceInput) {
+      this.btnVoiceInput.classList.remove('listening');
+      this.btnVoiceInput.innerHTML = `<span class="voice-mic-icon">🎙️</span><span class="voice-btn-text">語音答題</span>`;
+    }
+  }
+
+  showVoiceStatus(message, type = 'info', autoHideDuration = 3000) {
+    if (!this.voiceStatusTip) return;
+    this.voiceStatusTip.textContent = message;
+    this.voiceStatusTip.className = `voice-status-tip ${type}`;
+    this.voiceStatusTip.style.display = 'block';
+
+    if (this._voiceTipTimer) {
+      clearTimeout(this._voiceTipTimer);
+      this._voiceTipTimer = null;
+    }
+
+    if (autoHideDuration > 0) {
+      this._voiceTipTimer = setTimeout(() => {
+        if (this.voiceStatusTip) {
+          this.voiceStatusTip.style.display = 'none';
+        }
+      }, autoHideDuration);
+    }
+  }
+
+  // Parse spoken Traditional Chinese / Mandarin phrases and numbers to integer
+  parseSpokenAnswer(text) {
+    if (!text) return null;
+    let str = text.trim();
+
+    // 1. Negative sign
+    let isNegative = false;
+    if (/^(負|负|-)/.test(str)) {
+      isNegative = true;
+      str = str.replace(/^(負|负|-)/, '').trim();
+    }
+
+    // 2. Direct Arabic numeral match (e.g. "5", "12", "答案是 8", "等於3")
+    const digitMatch = str.match(/\d+/);
+    if (digitMatch) {
+      const val = parseInt(digitMatch[0], 10);
+      return isNegative ? -val : val;
+    }
+
+    // 3. Remove common spoken prefixes and suffixes
+    str = str.replace(/^(答案是|答案為|等於|等于|算出來是|我覺得是|我想是|答案|是)/, '');
+    str = str.replace(/(顆|个|個|隻|把|條|點|啦|呢|喔|啊|吧|！|。|\.)$/g, '');
+    str = str.trim();
+
+    // 4. Map of Chinese numerals
+    const cnDigits = {
+      '零': 0, '〇': 0, '○': 0, 'O': 0, 'o': 0,
+      '一': 1, '壹': 1, '么': 1,
+      '二': 2, '貳': 2, '兩': 2, '两': 2,
+      '三': 3, '參': 3, '叁': 3,
+      '四': 4, '肆': 4,
+      '五': 5, '伍': 5,
+      '六': 6, '陸': 6,
+      '七': 7, '柒': 7,
+      '八': 8, '捌': 8,
+      '九': 9, '玖': 9
+    };
+
+    // Direct single numeral
+    if (cnDigits[str] !== undefined) {
+      const val = cnDigits[str];
+      return isNegative ? -val : val;
+    }
+
+    // Multi-digit Chinese numbers (e.g. "十一" -> 11, "二十三" -> 23, "一百二十三" -> 123)
+    let total = 0;
+    let hasMatched = false;
+
+    // Hundreds
+    const baiMatch = str.match(/([零一二兩两三四五六七八九])百/);
+    if (baiMatch) {
+      total += (cnDigits[baiMatch[1]] || 0) * 100;
+      hasMatched = true;
+      str = str.replace(/.*百/, '');
+    }
+
+    // Tens
+    const shiMatch = str.match(/([零一二兩两三四五六七八九])?十/);
+    if (shiMatch) {
+      const multiplier = shiMatch[1] ? (cnDigits[shiMatch[1]] || 1) : 1;
+      total += multiplier * 10;
+      hasMatched = true;
+      str = str.replace(/.*十/, '');
+    }
+
+    // Units (remove leading filler 零/〇/○ such as in "一百零五")
+    str = str.replace(/[零〇○O0o]/g, '');
+    const unitMatch = str.match(/([一二兩两三四五六七八九])/);
+    if (unitMatch) {
+      total += cnDigits[unitMatch[1]] || 0;
+      hasMatched = true;
+    }
+
+    if (hasMatched) {
+      return isNegative ? -total : total;
+    }
+
+    return null;
   }
 
   checkAnswer() {
