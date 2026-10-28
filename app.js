@@ -65,14 +65,21 @@ class MathApp {
     this.recognition = null;
     this.isRecognizing = false;
     this._voiceTipTimer = null;
+    this.micPermissionGranted = false;
+    this.micPermissionRequested = false;
 
     this.bindEvents();
     this.init();
   }
 
   init() {
-    // Render initial problem (Default: 2 numbers, 2 digits, subtraction, auto)
+    // Proactively request and pre-authorize microphone permission by default directly
+    this.requestDirectMicrophonePermission();
+    this.setupDirectMicUnlock();
+
+    // Render initial problem (Default: 2 numbers, 1 digit, subtraction, auto)
     this.generateNewProblem();
+    this.updateKeyboardVisibility();
   }
 
   bindEvents() {
@@ -118,6 +125,12 @@ class MathApp {
       if (e.key === 'Enter') {
         this.checkAnswer();
       }
+    });
+    this.userAnswerInput.addEventListener('focus', () => {
+      this.updateKeyboardVisibility();
+    });
+    this.userAnswerInput.addEventListener('input', () => {
+      this.userAnswerInput.value = this.userAnswerInput.value.replace(/[^\d\-]/g, '');
     });
 
     // Voice recognition answer input
@@ -185,6 +198,87 @@ class MathApp {
       this.renderManualInputFields();
     } else {
       this.manualPanel.style.display = 'none';
+    }
+    this.updateKeyboardVisibility();
+  }
+
+  updateKeyboardVisibility() {
+    const isManual = (this.config.mode === 'manual');
+    const virtualNumpad = document.querySelector('.virtual-numpad');
+
+    // Ensure answer input has inputmode="none" so mobile OS virtual keyboard is never shown
+    if (this.userAnswerInput) {
+      this.userAnswerInput.setAttribute('inputmode', 'none');
+    }
+
+    if (isManual) {
+      document.body.classList.add('mode-manual');
+      // In manual mode, do not show any keyboard interface (hide virtual numpad)
+      if (virtualNumpad) {
+        virtualNumpad.style.display = 'none';
+      }
+    } else {
+      document.body.classList.remove('mode-manual');
+      // In auto mode, virtual numpad is visible for on-screen number clicks
+      if (virtualNumpad) {
+        virtualNumpad.style.display = 'grid';
+      }
+    }
+  }
+
+  // ==========================================
+  // Direct Microphone Permission Authorization
+  // ==========================================
+  async requestDirectMicrophonePermission() {
+    if (this.micPermissionGranted || this.micPermissionRequested) return;
+    this.micPermissionRequested = true;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.log('navigator.mediaDevices.getUserMedia is not available in current context (e.g. file:// or non-secure origin)');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.micPermissionGranted = true;
+      // Immediately stop all tracks to avoid keeping the mic recording active in background
+      stream.getTracks().forEach(track => track.stop());
+      console.log('Microphone permission pre-authorized directly by default.');
+    } catch (err) {
+      console.warn('Direct microphone permission prompt result:', err.name, err.message);
+      // Allow retry on user gesture if browser blocked unprompted request
+      this.micPermissionRequested = false;
+    }
+  }
+
+  setupDirectMicUnlock() {
+    const unlockDirectMic = () => {
+      if (!this.micPermissionGranted) {
+        this.requestDirectMicrophonePermission();
+      }
+      ['click', 'touchstart', 'touchend', 'keydown'].forEach(evt => {
+        document.removeEventListener(evt, unlockDirectMic, true);
+      });
+    };
+    ['click', 'touchstart', 'touchend', 'keydown'].forEach(evt => {
+      document.addEventListener(evt, unlockDirectMic, { capture: true, once: false });
+    });
+
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        navigator.permissions.query({ name: 'microphone' }).then(status => {
+          if (status.state === 'prompt') {
+            this.requestDirectMicrophonePermission();
+          } else if (status.state === 'granted') {
+            this.micPermissionGranted = true;
+          }
+          status.onchange = () => {
+            if (status.state === 'granted') {
+              this.micPermissionGranted = true;
+            }
+          };
+        }).catch(() => {});
+      } catch (e) {}
     }
   }
 
@@ -370,6 +464,7 @@ class MathApp {
 
     // Reset user answer input
     this.userAnswerInput.value = '';
+    this.updateKeyboardVisibility();
     this.userAnswerInput.focus();
     this.feedbackBanner.style.display = 'none';
 

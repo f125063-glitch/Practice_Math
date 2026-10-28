@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Permissions-Policy" content="microphone=*">
   <title>歡樂數學加減法大冒險 (幼稚園大班 ~ 國小六年級)</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -169,7 +170,7 @@
         <div class="answer-row">
           <div class="input-wrapper">
             <span class="equal-sign">＝</span>
-            <input type="number" id="userAnswerInput" class="user-answer-input" placeholder="請輸入答案" autocomplete="off" />
+            <input type="text" id="userAnswerInput" class="user-answer-input" placeholder="請輸入答案" autocomplete="off" inputmode="none" />
           </div>
           <button type="button" id="btnVoiceInput" class="btn-voice-input" title="點擊後說出答案 (例如: 3、等於五)">
             <span class="voice-mic-icon">🎙️</span>

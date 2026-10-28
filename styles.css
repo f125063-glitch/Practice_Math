@@ -910,6 +910,31 @@ body {
   box-shadow: 0 0 0 4px rgba(77, 171, 247, 0.25);
 }
 
+/* Step 3 input focus attention glow animation */
+@keyframes inputAttention {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(77, 171, 247, 0.6);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(77, 171, 247, 0.35);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 4px rgba(77, 171, 247, 0.25);
+  }
+}
+
+.user-answer-input.step3-attention {
+  animation: inputAttention 0.8s ease-in-out;
+}
+
+/* Mode Manual: Hide virtual numpad when manual input is selected */
+body.mode-manual .virtual-numpad {
+  display: none !important;
+}
+
 .btn-submit-answer {
   padding: 14px 26px;
   background: linear-gradient(135deg, #ff6b6b, #fa5252);

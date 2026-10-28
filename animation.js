@@ -68,6 +68,9 @@ class FlashMathAnimator {
           this.voices = window.speechSynthesis.getVoices() || [];
         }
       }
+      if (window.mathApp && typeof window.mathApp.requestDirectMicrophonePermission === 'function') {
+        window.mathApp.requestDirectMicrophonePermission();
+      }
       ['click', 'touchstart', 'touchend', 'keydown'].forEach(evt => {
         document.removeEventListener(evt, unlock, true);
       });
@@ -526,9 +529,27 @@ class FlashMathAnimator {
     this.formulaBanner.textContent = `${num1} ${opChar} ${num2} ＝ ${resText}`;
   }
 
+  focusAnswerInput() {
+    const input = document.getElementById('userAnswerInput');
+    if (input) {
+      try {
+        input.focus({ preventScroll: false });
+      } catch (e) {
+        input.focus();
+      }
+      input.classList.remove('step3-attention');
+      void input.offsetWidth;
+      input.classList.add('step3-attention');
+    }
+  }
+
   executeCurrentStep() {
     this.updateButtonStates();
     this.renderCurrentStep();
+    // Requirement: 當展示進行到或進行過第三步時, 指標要切換到答案輸入框
+    if (this.currentStep >= 3) {
+      this.focusAnswerInput();
+    }
   }
 
   onStepFinished() {
@@ -538,6 +559,7 @@ class FlashMathAnimator {
       // Step 3 reached & spoken completely -> Force auto pause until student inputs answer on the right
       this.pause();
       this.btnPlayPause.textContent = '⏸️ 思考中（請於右側輸入答案）';
+      this.focusAnswerInput();
       return;
     }
 
@@ -848,7 +870,7 @@ class FlashMathAnimator {
   goToStep(step) {
     this.pause();
     this.currentStep = Math.min(step, this.totalSteps);
-    this.renderCurrentStep();
+    this.executeCurrentStep();
   }
 
   createItemGroup(count, icon, startIdx = 1, extraClass = '') {
