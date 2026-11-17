@@ -300,7 +300,8 @@ class FlashMathAnimator {
     spoken = spoken.replace(/＝|=/g, ' 等於 ');
     // Replace colons with comma for natural speech pause
     spoken = spoken.replace(/[：:]/g, '，');
-    // Remove decorative emojis
+    // Remove brackets and decorative emojis
+    spoken = spoken.replace(/[\[\]「」『』【】]/g, '');
     spoken = spoken.replace(/[🍎⭐🍬🐻🏀✨🎉❌💪💡📐🎲✏️👉⏮️⏭️▶️⏸️🔄💭]/g, '');
 
     // In slow mode, add natural breathing pauses to counting numbers
@@ -621,7 +622,7 @@ class FlashMathAnimator {
     if (this.currentStep === 0) {
       // Step 0: Initial state - Opening narration
       this.updateFormulaBanner(false);
-      const text = `我們要來算：${num1} 加 ${num2} 等於多少呢？準備好了嗎？點選播放一起看！`;
+      const text = `我們要來算：${num1} 加 ${num2} 等於多少呢？準備好了嗎？點選[播放動畫]的按鈕來開始看！`;
       this.setNarrator(text);
       this.playSound('ding');
 
@@ -860,7 +861,7 @@ class FlashMathAnimator {
     this.clearStep1Timers();
     if (!itemElements || itemElements.length === 0 || count <= 0) return;
 
-    // 前綴 "第一步：先拿出 n 顆蘋果！我們來數：" 語音長度估計
+    // 前綴 "第一步：先拿出/原本一共有 n 顆[主題]！我們來數：" 語音長度估計
     const introDelay = (this.speedMultiplier <= 0.75 ? 3800 : 2800) / this.speedMultiplier;
     // 每個數字唸出的間隔
     const stepInterval = (this.speedMultiplier <= 0.75 ? 850 : 650) / this.speedMultiplier;
@@ -870,7 +871,10 @@ class FlashMathAnimator {
       if (!el) continue;
       const t = setTimeout(() => {
         if (el) {
-          el.style.opacity = '0';
+          // 當主題物件的數量被念到時, 該物件才由漸層顯示, 直到透明度為0%
+          el.classList.remove('count-fade-active');
+          void el.offsetWidth;
+          el.classList.add('count-fade-active');
         }
       }, introDelay + i * stepInterval);
       this.step1Timers.push(t);
@@ -905,38 +909,45 @@ class FlashMathAnimator {
 
     this.step3CycleActive = true;
 
-    // 依序由 100% 變為 0% 並維持 0%
-    const fadeNext = (index) => {
+    // 初始狀態：先全部改為 0%
+    items.forEach(el => {
+      el.style.opacity = '0';
+    });
+
+    // 依序由 0% 變為 100% 並維持 100%
+    const showNext = (index) => {
       if (!this.step3CycleActive) return;
 
       if (index < items.length) {
-        // 當前顆由 100% 變成 0%
-        items[index].style.opacity = '0';
+        // 當前顆由 0% 變成 100% 並維持 100%
+        items[index].style.opacity = '1';
         // 接著換下一顆
-        const nextDelay = 800; // 每顆淡出間隔
+        const nextDelay = 800; // 每顆淡入間隔
         this.step3CycleTimer = setTimeout(() => {
-          fadeNext(index + 1);
+          showNext(index + 1);
         }, nextDelay);
       } else {
-        // 全部都變成 0% 且維持 3 秒
+        // 全部都變成 100% 且維持 3 秒
         this.step3CycleTimer = setTimeout(() => {
           if (!this.step3CycleActive) return;
-          // 全部再改為 100%
+          // 全部再改為 0%
           items.forEach(el => {
-            el.style.opacity = '1';
+            el.style.opacity = '0';
           });
 
-          // 維持一下 100% 後再重複循環
+          // 全部維持 0% 1.2 秒後再重複循環
           this.step3CycleTimer = setTimeout(() => {
             if (!this.step3CycleActive) return;
-            fadeNext(0);
+            showNext(0);
           }, 1200);
         }, 3000);
       }
     };
 
-    // 啟動循環
-    fadeNext(0);
+    // 稍微延遲 300ms 後啟動循環，讓初始 0% 生效
+    this.step3CycleTimer = setTimeout(() => {
+      showNext(0);
+    }, 300);
   }
 
   createUncountedItemGroup(count, icon) {
