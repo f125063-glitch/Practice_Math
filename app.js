@@ -131,6 +131,12 @@ class MathApp {
     });
     this.userAnswerInput.addEventListener('input', () => {
       this.userAnswerInput.value = this.userAnswerInput.value.replace(/[^\d\-]/g, '');
+      this.updateSubmitButtonPulse();
+      if (this.userAnswerInput.value.trim() !== '') {
+        if (window.flashAnimator && typeof window.flashAnimator.stopStep3Cycle === 'function') {
+          window.flashAnimator.stopStep3Cycle();
+        }
+      }
     });
 
     // Voice recognition answer input
@@ -158,6 +164,12 @@ class MathApp {
           this.userAnswerInput.value = this.userAnswerInput.value.slice(0, -1);
         } else {
           this.userAnswerInput.value += val;
+        }
+        this.updateSubmitButtonPulse();
+        if (this.userAnswerInput.value.trim() !== '') {
+          if (window.flashAnimator && typeof window.flashAnimator.stopStep3Cycle === 'function') {
+            window.flashAnimator.stopStep3Cycle();
+          }
         }
         this.userAnswerInput.focus();
       });
@@ -464,6 +476,7 @@ class MathApp {
 
     // Reset user answer input
     this.userAnswerInput.value = '';
+    this.updateSubmitButtonPulse();
     this.updateKeyboardVisibility();
     this.userAnswerInput.focus();
     this.feedbackBanner.style.display = 'none';
@@ -647,6 +660,10 @@ class MathApp {
             const parsedNum = resolved.number;
             const matchedText = resolved.transcript || finalTranscript;
             this.userAnswerInput.value = parsedNum;
+            this.updateSubmitButtonPulse();
+            if (window.flashAnimator && typeof window.flashAnimator.stopStep3Cycle === 'function') {
+              window.flashAnimator.stopStep3Cycle();
+            }
             this.showVoiceStatus(`✅ 辨識成功：「${matchedText}」➔ 答案 ${parsedNum}！正在檢查...`, 'success', 2500);
             if (window.flashAnimator && window.flashAnimator.playSound) {
               window.flashAnimator.playSound('pop');
@@ -894,6 +911,16 @@ class MathApp {
     return null;
   }
 
+  updateSubmitButtonPulse() {
+    if (!this.btnSubmit) return;
+    const hasValue = (this.userAnswerInput && this.userAnswerInput.value.trim() !== '');
+    if (hasValue) {
+      this.btnSubmit.classList.add('pulsing-opacity');
+    } else {
+      this.btnSubmit.classList.remove('pulsing-opacity');
+    }
+  }
+
   // Parse spoken Traditional Chinese / Mandarin phrases and numbers to integer
   parseSpokenAnswer(text) {
     const res = this.resolveBestSpokenAnswer([text]);
@@ -915,6 +942,9 @@ class MathApp {
     if (isCorrect) {
       this.stats.correct++;
       this.stats.streak++;
+      if (this.btnSubmit) {
+        this.btnSubmit.classList.remove('pulsing-opacity');
+      }
       window.flashAnimator.playSound('fanfare');
       this.showFeedback(true);
       // Reveal column math
@@ -928,6 +958,18 @@ class MathApp {
       this.stats.streak = 0;
       window.flashAnimator.playSound('woosh');
       this.showFeedback(false);
+
+      // 清空輸入框答案，並保持持續變化透明度
+      this.userAnswerInput.value = '';
+      if (this.btnSubmit) {
+        this.btnSubmit.classList.add('pulsing-opacity');
+      }
+      this.userAnswerInput.focus();
+
+      // If animation eligible and still in Step 3, restart cycle
+      if (this.currentProblem.isAnimationEligible && window.flashAnimator && window.flashAnimator.currentStep === 3) {
+        window.flashAnimator.startStep3Cycle();
+      }
     }
 
     this.updateStatsUI();

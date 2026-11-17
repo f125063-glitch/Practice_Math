@@ -727,7 +727,7 @@ body {
   align-items: center;
   justify-content: center;
   position: relative;
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 0.5s ease-in-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   user-select: none;
 }
 
@@ -933,6 +933,23 @@ body {
 /* Mode Manual: Hide virtual numpad when manual input is selected */
 body.mode-manual .virtual-numpad {
   display: none !important;
+}
+
+/* Pulse opacity animation for submit answer button when input has value */
+@keyframes submitPulseOpacity {
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.btn-submit-answer.pulsing-opacity {
+  animation: submitPulseOpacity 1.2s infinite ease-in-out !important;
 }
 
 .btn-submit-answer {

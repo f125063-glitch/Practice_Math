@@ -21,6 +21,11 @@ class FlashMathAnimator {
     this.timer = null;
     this.speechEnabled = true;
 
+    // Step 1 count-fade timers and Step 3 cycle state
+    this.step1Timers = [];
+    this.step3CycleTimer = null;
+    this.step3CycleActive = false;
+
     // Theme assets
     this.themes = {
       apples: { icon: '🍎', name: '蘋果', color: '#ff6b6b' },
@@ -407,7 +412,7 @@ class FlashMathAnimator {
     // Requirement e: 當按下”上一步”或”下一步”後, “播放動畫"的文字敘述要變更為”繼續播放”, 直到按”重播"或”換下一題”才回復
     if (!this.isPlaying) {
       if (this.currentStep === 3 && !this.isAnswerRevealed) {
-        this.btnPlayPause.textContent = '⏸️ 思考中（請於右側輸入答案）';
+        this.btnPlayPause.textContent = '⏸️ 思考中（想好/數好再把答案填上）';
         this.btnPlayPause.style.background = 'linear-gradient(135deg, #ffa94d, #fd7e14)';
       } else if (this.currentStep >= this.totalSteps) {
         this.btnPlayPause.textContent = '🔄 重播動畫';
@@ -454,9 +459,9 @@ class FlashMathAnimator {
 
     if (this.currentStep === 3 && !this.isAnswerRevealed) {
       this.pause();
-      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步！';
+      const tip = '👉 想好/數好再把答案填上並點擊「確認送出」，才會公布第 4 步！';
       this.setNarrator(tip);
-      this.speak('請先在右邊輸入答案！');
+      this.speak('想好或數好再把答案填上！');
       return;
     }
 
@@ -479,6 +484,8 @@ class FlashMathAnimator {
     if (this.currentStep > 0) {
       this.hasStepped = true;
     }
+    this.clearStep1Timers();
+    this.stopStep3Cycle();
     this.updateButtonStates();
     if (this.timer) {
       clearTimeout(this.timer);
@@ -493,9 +500,9 @@ class FlashMathAnimator {
   nextStep() {
     if (this.currentStep === 3 && !this.isAnswerRevealed) {
       this.pause();
-      const tip = '👉 請先在右邊輸入答案並點擊「確認送出」，才會公布第 4 步！';
+      const tip = '👉 想好/數好再把答案填上並點擊「確認送出」，才會公布第 4 步！';
       this.setNarrator(tip);
-      this.speak('請先在右邊輸入答案！');
+      this.speak('想好或數好再把答案填上！');
       return;
     }
 
@@ -558,8 +565,9 @@ class FlashMathAnimator {
     if (this.currentStep === 3) {
       // Step 3 reached & spoken completely -> Force auto pause until student inputs answer on the right
       this.pause();
-      this.btnPlayPause.textContent = '⏸️ 思考中（請於右側輸入答案）';
+      this.btnPlayPause.textContent = '⏸️ 思考中（想好/數好再把答案填上）';
       this.focusAnswerInput();
+      this.startStep3Cycle();
       return;
     }
 
@@ -579,7 +587,11 @@ class FlashMathAnimator {
     this.currentStep = 4;
     this.updateFormulaBanner(true);
     this.updateButtonStates();
-    this.executeCurrentStep();
+
+    // 先有"恭喜你!答對了”的朗讀, 再接著第四步的朗讀
+    this.speak('恭喜你！答對了！', () => {
+      this.executeCurrentStep();
+    });
   }
 
   revealAnswer() {
@@ -649,12 +661,14 @@ class FlashMathAnimator {
       const group1 = this.createItemGroup(num1, theme.icon, 1, 'appear');
       container.appendChild(group1);
 
+      const items = Array.from(group1.querySelectorAll('.anim-item'));
+      this.startStep1CountingFade(items, num1);
       this.staggerPopSound(num1);
 
     } else if (this.currentStep === 2) {
       // Step 2: Show addition and second group
       this.updateFormulaBanner(false);
-      const text = `第二步：加上 ${num2} 顆${theme.name}！又來了 ${num2} 顆！`;
+      const text = `第二步：加上 ${num2} 顆${theme.name}！`;
       this.setNarrator(text);
       this.speak(text, () => this.onStepFinished());
 
@@ -674,7 +688,7 @@ class FlashMathAnimator {
     } else if (this.currentStep === 3) {
       // Step 3: Question step - Do NOT reveal result
       this.updateFormulaBanner(false);
-      const text = `第三步：${num1} 加 ${num2} 合在一起總共有幾個呢？請數一數，也可以在右邊輸入答案！`;
+      const text = `第三步：${num1} 加 ${num2} 合在一起總共有幾個呢？數數看或想想看，有答案再把數字填上！`;
       this.setNarrator(text);
       // Spoken text is 100% identical to UI narrator text
       this.speak(text, () => this.onStepFinished());
@@ -684,7 +698,7 @@ class FlashMathAnimator {
 
       const hintEl = document.createElement('div');
       hintEl.style.cssText = 'width: 100%; text-align: center; font-size: 1.15rem; font-weight: 700; color: #1864ab; margin-top: 8px;';
-      hintEl.textContent = '💭 數數看合在一起總共有幾個？請在右邊輸入答案！';
+      hintEl.textContent = '💭 數數看合在一起總共有幾個？想好/數好再把答案填上！';
       container.appendChild(hintEl);
 
       this.playSound('ding');
@@ -748,6 +762,8 @@ class FlashMathAnimator {
       const group = this.createItemGroup(num1, theme.icon, 1, 'appear');
       container.appendChild(group);
 
+      const items = Array.from(group.querySelectorAll('.anim-item'));
+      this.startStep1CountingFade(items, num1);
       this.staggerPopSound(num1);
 
     } else if (this.currentStep === 2) {
@@ -783,7 +799,7 @@ class FlashMathAnimator {
     } else if (this.currentStep === 3) {
       // Step 3: Question step - Split per request: "8減5剩下幾個?" (No result shown or spoken)
       this.updateFormulaBanner(false);
-      const text = `第三步：${num1} 減 ${num2} 剩下幾個呢？請數一數，也可以在右邊輸入答案！`;
+      const text = `第三步：${num1} 減 ${num2} 剩下幾個呢？數數看或想想看，有答案再把數字填上！`;
       this.setNarrator(text);
       // Spoken text is 100% identical to UI narrator text
       this.speak(text, () => this.onStepFinished());
@@ -793,7 +809,7 @@ class FlashMathAnimator {
 
       const hintEl = document.createElement('div');
       hintEl.style.cssText = 'width: 100%; text-align: center; font-size: 1.15rem; font-weight: 700; color: #d9480f; margin-top: 8px;';
-      hintEl.textContent = `💭 數數看剩下幾個？請在右邊輸入答案！`;
+      hintEl.textContent = `💭 數數看剩下幾個？想好/數好再把答案填上！`;
       container.appendChild(hintEl);
 
       this.playSound('ding');
@@ -833,6 +849,96 @@ class FlashMathAnimator {
   }
 
   // Create items with '?' badges for thinking/question step without revealing count
+  clearStep1Timers() {
+    if (this.step1Timers && this.step1Timers.length > 0) {
+      this.step1Timers.forEach(t => clearTimeout(t));
+      this.step1Timers = [];
+    }
+  }
+
+  startStep1CountingFade(itemElements, count) {
+    this.clearStep1Timers();
+    if (!itemElements || itemElements.length === 0 || count <= 0) return;
+
+    // 前綴 "第一步：先拿出 n 顆蘋果！我們來數：" 語音長度估計
+    const introDelay = (this.speedMultiplier <= 0.75 ? 3800 : 2800) / this.speedMultiplier;
+    // 每個數字唸出的間隔
+    const stepInterval = (this.speedMultiplier <= 0.75 ? 850 : 650) / this.speedMultiplier;
+
+    for (let i = 0; i < count; i++) {
+      const el = itemElements[i];
+      if (!el) continue;
+      const t = setTimeout(() => {
+        if (el) {
+          el.style.opacity = '0';
+        }
+      }, introDelay + i * stepInterval);
+      this.step1Timers.push(t);
+    }
+  }
+
+  stopStep3Cycle() {
+    this.step3CycleActive = false;
+    if (this.step3CycleTimer) {
+      clearTimeout(this.step3CycleTimer);
+      this.step3CycleTimer = null;
+    }
+    // 停止時將所有 uncounted 項目恢復為 100% 透明度
+    const items = document.querySelectorAll('#stageCanvasContainer .uncounted-step3-item');
+    items.forEach(el => {
+      el.style.opacity = '1';
+    });
+  }
+
+  startStep3Cycle() {
+    this.stopStep3Cycle();
+    if (this.currentStep !== 3 || this.isAnswerRevealed) return;
+
+    // 若輸入框已經有填寫正確答案，就不啟動
+    const input = document.getElementById('userAnswerInput');
+    if (input && input.value.trim() !== '' && parseInt(input.value.trim(), 10) === this.currentProblem.result) {
+      return;
+    }
+
+    const items = Array.from(document.querySelectorAll('#stageCanvasContainer .uncounted-step3-item'));
+    if (items.length === 0) return;
+
+    this.step3CycleActive = true;
+
+    // 依序由 100% 變為 0% 並維持 0%
+    const fadeNext = (index) => {
+      if (!this.step3CycleActive) return;
+
+      if (index < items.length) {
+        // 當前顆由 100% 變成 0%
+        items[index].style.opacity = '0';
+        // 接著換下一顆
+        const nextDelay = 800; // 每顆淡出間隔
+        this.step3CycleTimer = setTimeout(() => {
+          fadeNext(index + 1);
+        }, nextDelay);
+      } else {
+        // 全部都變成 0% 且維持 3 秒
+        this.step3CycleTimer = setTimeout(() => {
+          if (!this.step3CycleActive) return;
+          // 全部再改為 100%
+          items.forEach(el => {
+            el.style.opacity = '1';
+          });
+
+          // 維持一下 100% 後再重複循環
+          this.step3CycleTimer = setTimeout(() => {
+            if (!this.step3CycleActive) return;
+            fadeNext(0);
+          }, 1200);
+        }, 3000);
+      }
+    };
+
+    // 啟動循環
+    fadeNext(0);
+  }
+
   createUncountedItemGroup(count, icon) {
     const group = document.createElement('div');
     group.className = 'anim-group';
@@ -849,7 +955,7 @@ class FlashMathAnimator {
 
     for (let i = 0; i < count; i++) {
       const item = document.createElement('div');
-      item.className = 'anim-item highlight-count';
+      item.className = 'anim-item highlight-count uncounted-step3-item';
       item.textContent = icon;
 
       const badge = document.createElement('span');
