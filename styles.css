@@ -727,32 +727,8 @@ body {
   align-items: center;
   justify-content: center;
   position: relative;
-  transition: opacity 0.6s ease-in-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 0.5s ease-in-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   user-select: none;
-}
-
-/* Step 1 counting animation: items start hidden (0%), then fade in to 100% and continue to fade out to 0% */
-@keyframes countFadeGradient {
-  0% {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-  40% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-  70% {
-    opacity: 0.6;
-    transform: scale(1.0);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-}
-
-.anim-item.count-fade-active {
-  animation: countFadeGradient 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
 }
 
 .anim-item.appear {
@@ -952,6 +928,22 @@ body {
 
 .user-answer-input.step3-attention {
   animation: inputAttention 0.8s ease-in-out;
+}
+
+/* Step 3 input border flashing animation */
+@keyframes borderBlink {
+  0%, 100% {
+    border-color: #4dabf7;
+    box-shadow: 0 0 0 2px rgba(77, 171, 247, 0.2);
+  }
+  50% {
+    border-color: #ff6b6b;
+    box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.45);
+  }
+}
+
+.user-answer-input.input-border-blinking {
+  animation: borderBlink 0.9s infinite ease-in-out !important;
 }
 
 /* Mode Manual: Hide virtual numpad when manual input is selected */

@@ -861,6 +861,13 @@ class FlashMathAnimator {
     this.clearStep1Timers();
     if (!itemElements || itemElements.length === 0 || count <= 0) return;
 
+    // 初始狀態：全部先設定為 0%
+    itemElements.forEach(el => {
+      if (el) {
+        el.style.opacity = '0';
+      }
+    });
+
     // 前綴 "第一步：先拿出/原本一共有 n 顆[主題]！我們來數：" 語音長度估計
     const introDelay = (this.speedMultiplier <= 0.75 ? 3800 : 2800) / this.speedMultiplier;
     // 每個數字唸出的間隔
@@ -871,10 +878,8 @@ class FlashMathAnimator {
       if (!el) continue;
       const t = setTimeout(() => {
         if (el) {
-          // 當主題物件的數量被念到時, 該物件才由漸層顯示, 直到透明度為0%
-          el.classList.remove('count-fade-active');
-          void el.offsetWidth;
-          el.classList.add('count-fade-active');
+          // 當第 1~9 個主題物件的數量被念到時, 該物件由 0% 到 100% 並維持 100%
+          el.style.opacity = '1';
         }
       }, introDelay + i * stepInterval);
       this.step1Timers.push(t);
@@ -887,6 +892,8 @@ class FlashMathAnimator {
       clearTimeout(this.step3CycleTimer);
       this.step3CycleTimer = null;
     }
+    // 停止輸入框外框閃爍
+    this.stopInputBorderBlink();
     // 停止時將所有 uncounted 項目恢復為 100% 透明度
     const items = document.querySelectorAll('#stageCanvasContainer .uncounted-step3-item');
     items.forEach(el => {
@@ -894,9 +901,26 @@ class FlashMathAnimator {
     });
   }
 
+  startInputBorderBlink() {
+    const input = document.getElementById('userAnswerInput');
+    if (input && input.value.trim() === '') {
+      input.classList.add('input-border-blinking');
+    }
+  }
+
+  stopInputBorderBlink() {
+    const input = document.getElementById('userAnswerInput');
+    if (input) {
+      input.classList.remove('input-border-blinking');
+    }
+  }
+
   startStep3Cycle() {
     this.stopStep3Cycle();
     if (this.currentStep !== 3 || this.isAnswerRevealed) return;
+
+    // 第三步朗讀完, 且尚未輸入答案前, 輸入框的外框要持續閃爍, 直到輸入數字才停止
+    this.startInputBorderBlink();
 
     // 若輸入框已經有填寫正確答案，就不啟動
     const input = document.getElementById('userAnswerInput');

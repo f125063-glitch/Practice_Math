@@ -133,8 +133,13 @@ class MathApp {
       this.userAnswerInput.value = this.userAnswerInput.value.replace(/[^\d\-]/g, '');
       this.updateSubmitButtonPulse();
       if (this.userAnswerInput.value.trim() !== '') {
-        if (window.flashAnimator && typeof window.flashAnimator.stopStep3Cycle === 'function') {
-          window.flashAnimator.stopStep3Cycle();
+        if (window.flashAnimator) {
+          if (typeof window.flashAnimator.stopStep3Cycle === 'function') {
+            window.flashAnimator.stopStep3Cycle();
+          }
+          if (typeof window.flashAnimator.stopInputBorderBlink === 'function') {
+            window.flashAnimator.stopInputBorderBlink();
+          }
         }
       }
     });
@@ -167,8 +172,13 @@ class MathApp {
         }
         this.updateSubmitButtonPulse();
         if (this.userAnswerInput.value.trim() !== '') {
-          if (window.flashAnimator && typeof window.flashAnimator.stopStep3Cycle === 'function') {
-            window.flashAnimator.stopStep3Cycle();
+          if (window.flashAnimator) {
+            if (typeof window.flashAnimator.stopStep3Cycle === 'function') {
+              window.flashAnimator.stopStep3Cycle();
+            }
+            if (typeof window.flashAnimator.stopInputBorderBlink === 'function') {
+              window.flashAnimator.stopInputBorderBlink();
+            }
           }
         }
         this.userAnswerInput.focus();
@@ -661,8 +671,13 @@ class MathApp {
             const matchedText = resolved.transcript || finalTranscript;
             this.userAnswerInput.value = parsedNum;
             this.updateSubmitButtonPulse();
-            if (window.flashAnimator && typeof window.flashAnimator.stopStep3Cycle === 'function') {
-              window.flashAnimator.stopStep3Cycle();
+            if (window.flashAnimator) {
+              if (typeof window.flashAnimator.stopStep3Cycle === 'function') {
+                window.flashAnimator.stopStep3Cycle();
+              }
+              if (typeof window.flashAnimator.stopInputBorderBlink === 'function') {
+                window.flashAnimator.stopInputBorderBlink();
+              }
             }
             this.showVoiceStatus(`✅ 辨識成功：「${matchedText}」➔ 答案 ${parsedNum}！正在檢查...`, 'success', 2500);
             if (window.flashAnimator && window.flashAnimator.playSound) {
