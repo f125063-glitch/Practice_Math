@@ -67,6 +67,7 @@ class MathApp {
     this._voiceTipTimer = null;
     this.micPermissionGranted = false;
     this.micPermissionRequested = false;
+    this.activeInput = null;
 
     this.bindEvents();
     this.init();
@@ -127,7 +128,11 @@ class MathApp {
       }
     });
     this.userAnswerInput.addEventListener('focus', () => {
+      this.activeInput = this.userAnswerInput;
       this.updateKeyboardVisibility();
+    });
+    this.userAnswerInput.addEventListener('click', () => {
+      this.activeInput = this.userAnswerInput;
     });
     this.userAnswerInput.addEventListener('input', () => {
       this.userAnswerInput.value = this.userAnswerInput.value.replace(/[^\d\-]/g, '');
@@ -159,29 +164,15 @@ class MathApp {
       this.generateNewProblem();
     });
 
-    // Virtual numpad
+    // Virtual numpad (數字9宮格介面常駐)
     document.querySelectorAll('.num-key').forEach(key => {
+      key.addEventListener('mousedown', (e) => {
+        // Prevent button click from causing input to lose focus
+        e.preventDefault();
+      });
       key.addEventListener('click', () => {
         const val = key.dataset.key;
-        if (val === 'clear') {
-          this.userAnswerInput.value = '';
-        } else if (val === 'backspace') {
-          this.userAnswerInput.value = this.userAnswerInput.value.slice(0, -1);
-        } else {
-          this.userAnswerInput.value += val;
-        }
-        this.updateSubmitButtonPulse();
-        if (this.userAnswerInput.value.trim() !== '') {
-          if (window.flashAnimator) {
-            if (typeof window.flashAnimator.stopStep3Cycle === 'function') {
-              window.flashAnimator.stopStep3Cycle();
-            }
-            if (typeof window.flashAnimator.stopInputBorderBlink === 'function') {
-              window.flashAnimator.stopInputBorderBlink();
-            }
-          }
-        }
-        this.userAnswerInput.focus();
+        this.handleNumpadInput(val);
       });
     });
 
@@ -218,8 +209,15 @@ class MathApp {
     if (this.config.mode === 'manual') {
       this.manualPanel.style.display = 'flex';
       this.renderManualInputFields();
+      const firstInput = document.getElementById('manualNum_0');
+      if (firstInput) {
+        this.activeInput = firstInput;
+        firstInput.focus();
+      }
     } else {
       this.manualPanel.style.display = 'none';
+      this.activeInput = this.userAnswerInput;
+      this.userAnswerInput.focus();
     }
     this.updateKeyboardVisibility();
   }
@@ -233,19 +231,59 @@ class MathApp {
       this.userAnswerInput.setAttribute('inputmode', 'none');
     }
 
+    // Set inputmode="none" on manual inputs as well
+    document.querySelectorAll('.manual-input-box').forEach(input => {
+      input.setAttribute('inputmode', 'none');
+    });
+
     if (isManual) {
       document.body.classList.add('mode-manual');
-      // In manual mode, do not show any keyboard interface (hide virtual numpad)
-      if (virtualNumpad) {
-        virtualNumpad.style.display = 'none';
-      }
     } else {
       document.body.classList.remove('mode-manual');
-      // In auto mode, virtual numpad is visible for on-screen number clicks
-      if (virtualNumpad) {
-        virtualNumpad.style.display = 'grid';
+    }
+
+    // Virtual numpad is always visible (常駐) in both auto and manual modes
+    if (virtualNumpad) {
+      virtualNumpad.style.display = 'grid';
+    }
+  }
+
+  handleNumpadInput(val) {
+    const targetInput = this.activeInput || this.userAnswerInput;
+    if (!targetInput) return;
+
+    if (val === 'clear') {
+      targetInput.value = '';
+    } else if (val === 'backspace') {
+      targetInput.value = targetInput.value.slice(0, -1);
+    } else {
+      if (targetInput.classList.contains('manual-input-box')) {
+        if (targetInput.value.length < 3) {
+          targetInput.value += val;
+        }
+      } else {
+        targetInput.value += val;
       }
     }
+
+    // Dispatch input event so validation and listeners trigger
+    targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    if (targetInput === this.userAnswerInput) {
+      this.updateSubmitButtonPulse();
+      if (this.userAnswerInput.value.trim() !== '') {
+        if (window.flashAnimator) {
+          if (typeof window.flashAnimator.stopStep3Cycle === 'function') {
+            window.flashAnimator.stopStep3Cycle();
+          }
+          if (typeof window.flashAnimator.stopInputBorderBlink === 'function') {
+            window.flashAnimator.stopInputBorderBlink();
+          }
+        }
+      }
+    }
+
+    targetInput.focus();
   }
 
   // ==========================================
@@ -318,21 +356,31 @@ class MathApp {
       }
 
       const input = document.createElement('input');
-      input.type = 'number';
+      input.type = 'text';
+      input.setAttribute('inputmode', 'none');
       input.className = 'manual-input-box';
       input.id = `manualNum_${i}`;
       input.placeholder = `第${i + 1}數`;
-      input.min = '0';
-      input.max = '999';
+      input.maxLength = 3;
 
       // Pre-populate with reasonable values
       if (this.config.itemsCount === 2 && this.config.digits === 1) {
-        input.value = (i === 0 ? 8 : 3);
+        input.value = (i === 0 ? '8' : '3');
       } else if (this.config.itemsCount === 2 && this.config.digits === 2) {
-        input.value = (i === 0 ? 72 : 18);
+        input.value = (i === 0 ? '72' : '18');
       } else {
-        input.value = (i === 0 ? 80 : 20);
+        input.value = (i === 0 ? '80' : '20');
       }
+
+      input.addEventListener('focus', () => {
+        this.activeInput = input;
+      });
+      input.addEventListener('click', () => {
+        this.activeInput = input;
+      });
+      input.addEventListener('input', () => {
+        input.value = input.value.replace(/[^\d]/g, '');
+      });
 
       this.manualFieldsContainer.appendChild(input);
     }
@@ -488,6 +536,7 @@ class MathApp {
     this.userAnswerInput.value = '';
     this.updateSubmitButtonPulse();
     this.updateKeyboardVisibility();
+    this.activeInput = this.userAnswerInput;
     this.userAnswerInput.focus();
     this.feedbackBanner.style.display = 'none';
 

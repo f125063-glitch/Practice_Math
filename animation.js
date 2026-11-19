@@ -659,12 +659,11 @@ class FlashMathAnimator {
       this.setNarrator(text);
       this.speak(text, () => this.onStepFinished());
 
-      const group1 = this.createItemGroup(num1, theme.icon, 1, 'appear');
+      const group1 = this.createItemGroup(num1, theme.icon, 1);
       container.appendChild(group1);
 
       const items = Array.from(group1.querySelectorAll('.anim-item'));
       this.startStep1CountingFade(items, num1);
-      this.staggerPopSound(num1);
 
     } else if (this.currentStep === 2) {
       // Step 2: Show addition and second group
@@ -707,7 +706,7 @@ class FlashMathAnimator {
     } else if (this.currentStep === 4) {
       // Step 4: Announce Answer!
       this.updateFormulaBanner(true);
-      const text = `第四步：公布答案！一共有 ${result} 個！${num1} 加 ${num2} 等於 ${result}！🎉`;
+      const text = `${num1} 加 ${num2} 等於 ${result}，答案為 ${result}。🎉`;
       this.setNarrator(text);
       this.speak(text, () => this.onStepFinished());
 
@@ -760,12 +759,11 @@ class FlashMathAnimator {
       this.setNarrator(text);
       this.speak(text, () => this.onStepFinished());
 
-      const group = this.createItemGroup(num1, theme.icon, 1, 'appear');
+      const group = this.createItemGroup(num1, theme.icon, 1);
       container.appendChild(group);
 
       const items = Array.from(group.querySelectorAll('.anim-item'));
       this.startStep1CountingFade(items, num1);
-      this.staggerPopSound(num1);
 
     } else if (this.currentStep === 2) {
       // Step 2: Subtracting - Requirement f: "畫斜線"
@@ -816,9 +814,9 @@ class FlashMathAnimator {
       this.playSound('ding');
 
     } else if (this.currentStep === 4) {
-      // Step 4: Announce Answer per request: "公布答案: 剩下3個 ... 8減5等於3"
+      // Step 4: Announce Answer
       this.updateFormulaBanner(true);
-      const text = `第四步：公布答案！剩下 ${result} 個！${num1} 減 ${num2} 等於 ${result}！🎉`;
+      const text = `${num1} 減 ${num2} 等於 ${result}，答案為 ${result}。🎉`;
       this.setNarrator(text);
       this.speak(text, () => this.onStepFinished());
 
@@ -864,6 +862,8 @@ class FlashMathAnimator {
     // 初始狀態：全部先設定為 0%
     itemElements.forEach(el => {
       if (el) {
+        el.classList.remove('appear');
+        el.classList.remove('count-fade-active');
         el.style.opacity = '0';
       }
     });
@@ -872,14 +872,20 @@ class FlashMathAnimator {
     const introDelay = (this.speedMultiplier <= 0.75 ? 3800 : 2800) / this.speedMultiplier;
     // 每個數字唸出的間隔
     const stepInterval = (this.speedMultiplier <= 0.75 ? 850 : 650) / this.speedMultiplier;
+    const animDuration = (this.speedMultiplier <= 0.75 ? 1.0 : 0.75);
 
     for (let i = 0; i < count; i++) {
       const el = itemElements[i];
       if (!el) continue;
       const t = setTimeout(() => {
         if (el) {
-          // 當第 1~9 個主題物件的數量被念到時, 該物件由 0% 到 100% 並維持 100%
+          // 當主題物件的數量被念到時, 該物件的透明度要由0%到100%並維持100%, 後續其它顆/個和第1顆/個的機制一樣
+          el.classList.remove('count-fade-active');
+          el.style.animationDuration = `${animDuration}s`;
+          void el.offsetWidth;
+          el.classList.add('count-fade-active');
           el.style.opacity = '1';
+          this.playSound('pop');
         }
       }, introDelay + i * stepInterval);
       this.step1Timers.push(t);
