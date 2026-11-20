@@ -215,6 +215,12 @@ body {
   box-shadow: 0 4px 10px rgba(64, 192, 87, 0.3);
 }
 
+#operationGroup .btn-toggle[data-op="mul"].active {
+  background: linear-gradient(135deg, #ff922b, #f76707);
+  border-color: #d9480f;
+  box-shadow: 0 4px 10px rgba(247, 103, 7, 0.3);
+}
+
 /* Styled Dropdowns */
 .styled-dropdown {
   width: 100%;
@@ -706,6 +712,20 @@ body {
   position: relative;
 }
 
+.anim-group-title {
+  position: absolute;
+  top: -12px;
+  left: 12px;
+  background: #2b8a3e;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  z-index: 2;
+}
+
 .anim-operator {
   font-size: 2.8rem;
   font-weight: 900;
@@ -729,6 +749,28 @@ body {
   position: relative;
   transition: opacity 0.5s ease-in-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   user-select: none;
+}
+
+.anim-item.compact {
+  width: 36px;
+  height: 36px;
+  font-size: 1.7rem;
+}
+
+.anim-item.compact .item-badge {
+  font-size: 0.65rem;
+  padding: 1px 4px;
+}
+
+.anim-item.mini {
+  width: 28px;
+  height: 28px;
+  font-size: 1.25rem;
+}
+
+.anim-item.mini .item-badge {
+  font-size: 0.55rem;
+  padding: 1px 3px;
 }
 
 /* Step 1 counting animation: items start at 0%, fade in to 100%, and maintain 100% */

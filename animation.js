@@ -295,6 +295,8 @@ class FlashMathAnimator {
     // Remove "喔" from all speech per requirement d
     spoken = spoken.replace(/喔/g, '');
     // Replace operators with Mandarin words
+    // 「乘」讀音修正：替換為「乘以」，使 TTS 朗讀二聲 (ㄔㄥˊ 同音：成)，避免誤讀四聲 (同音：剩)
+    spoken = spoken.replace(/✕|×/g, ' 乘以 ');
     spoken = spoken.replace(/－|-/g, ' 減 ');
     spoken = spoken.replace(/＋|\+/g, ' 加 ');
     spoken = spoken.replace(/＝|=/g, ' 等於 ');
@@ -303,6 +305,11 @@ class FlashMathAnimator {
     // Remove brackets and decorative emojis
     spoken = spoken.replace(/[\[\]「」『』【】]/g, '');
     spoken = spoken.replace(/[🍎⭐🍬🐻🏀✨🎉❌💪💡📐🎲✏️👉⏮️⏭️▶️⏸️🔄💭]/g, '');
+    // 「數數看」發音修正：替換為「數一數」，使 TTS 朗讀第一個「數」為三聲 (ㄕㄨˇ)，避免誤讀四聲
+    spoken = spoken.replace(/數數看/g, '數一數');
+    // 「乘」讀音修正備用：將旁白中殘留的「數字 乘 數字」動詞用法替換為「乘以」（二聲 ㄔㄥˊ）
+    // 源頭文字已直接替換，此備用規則處理其他可能的殘漏情況
+    spoken = spoken.replace(/乘(?!以|法|客|車|船|機|界|市|波|風|金|方|期|溝|興|跨|越|緑|驒|敲|空|溝|婾)/g, '乘以');
 
     // In slow mode, add natural breathing pauses to counting numbers
     if (this.speedMultiplier <= 0.75) {
@@ -435,8 +442,8 @@ class FlashMathAnimator {
     this.currentProblem = {
       num1: parseInt(num1, 10),
       num2: parseInt(num2, 10),
-      op: op, // 'add' or 'sub'
-      result: op === 'add' ? (num1 + num2) : (num1 - num2)
+      op: op, // 'add', 'sub', or 'mul'
+      result: op === 'add' ? (num1 + num2) : (op === 'mul' ? (num1 * num2) : (num1 - num2))
     };
     this.totalSteps = 4;
     this.isAnswerRevealed = false;
@@ -532,7 +539,7 @@ class FlashMathAnimator {
   updateFormulaBanner(showResult = false) {
     if (!this.currentProblem) return;
     const { num1, num2, op, result } = this.currentProblem;
-    const opChar = op === 'add' ? '＋' : '－';
+    const opChar = op === 'add' ? '＋' : (op === 'mul' ? '✕' : '－');
     const resText = showResult ? result : '？';
     this.formulaBanner.textContent = `${num1} ${opChar} ${num2} ＝ ${resText}`;
   }
@@ -612,9 +619,127 @@ class FlashMathAnimator {
 
     if (op === 'add') {
       this.renderAdditionStep(container, num1, num2, result, theme);
+    } else if (op === 'mul') {
+      this.renderMultiplicationStep(container, num1, num2, result, theme);
     } else {
       this.renderSubtractionStep(container, num1, num2, result, theme);
     }
+  }
+
+  // --- Multiplication Animation Steps ---
+  // 概念： num1 組，每組 num2 個，共 num1 × num2 個
+  renderMultiplicationStep(container, num1, num2, result, theme) {
+    if (this.currentStep === 0) {
+      // Step 0: Opening narration
+      this.updateFormulaBanner(false);
+      const text = `我們要來算：${num1} 乘以 ${num2} 等於多少呢？乘法就是把 ${num1} 個 ${num2} 加在一起！準備好了嗎？點選播放動畫的按鈕來開始看！`;
+      this.setNarrator(text);
+      this.playSound('ding');
+
+      if (!this.hasUserInteracted) {
+        this.isSpeakingIntro = false;
+        this.updateButtonStates();
+      } else {
+        this.isSpeakingIntro = true;
+        this.updateButtonStates();
+        this.speak(text, () => {
+          this.isSpeakingIntro = false;
+          this.updateButtonStates();
+        });
+      }
+
+      const previewBox = document.createElement('div');
+      previewBox.innerHTML = `
+        <div style="font-size: 2rem; font-weight: 900; color: #f76707; text-align: center;">
+          ${theme.icon} ${num1} 組，每組 ${num2} 個 ✕ 等於？
+        </div>
+      `;
+      container.appendChild(previewBox);
+
+    } else if (this.currentStep === 1) {
+      // Step 1: Show first group of num2 items, counting them
+      this.updateFormulaBanner(false);
+      const countList = Array.from({length: num2}, (_, i) => i + 1);
+      const countStr = num2 === 0 ? '0 個' : countList.join('、');
+      const text = `第一步：${num1} 乘以 ${num2}，表示有 ${num1} 組，每組 ${num2} 個${theme.name}！我們先數第 1 組：${countStr}！`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      // Show only the first group
+      const group1 = this.createMulGroup(num2, theme.icon, 1, '1', '#1864ab');
+      container.appendChild(group1);
+
+      const items = Array.from(group1.querySelectorAll('.anim-item'));
+      this.startStep1CountingFade(items, num2);
+
+    } else if (this.currentStep === 2) {
+      // Step 2: Expand all num1 groups side by side
+      this.updateFormulaBanner(false);
+      const text2 = num1 === 1
+        ? `第二步：${num1} 乘以 ${num2} 只有 1 組，這 1 組就是全部了！總共有 ${num2} 個${theme.name}！`
+        : `第二步：再加上 ${num1 - 1} 組，每組一樣都有 ${num2} 個${theme.name}！我們看看所有 ${num1} 組！`;
+      this.setNarrator(text2);
+      this.speak(text2, () => this.onStepFinished());
+
+      // Show all num1 groups, with group 1 normal, 2..num1 appearing
+      for (let g = 1; g <= num1; g++) {
+        const extraClass = (g > 1) ? 'appear' : '';
+        const color = g === 1 ? '#1864ab' : '#2b8a3e';
+        const group = this.createMulGroup(num2, theme.icon, (g - 1) * num2 + 1, String(g), color, extraClass);
+        container.appendChild(group);
+      }
+
+      if (num1 > 1) {
+        this.playSound('ding');
+        this.staggerPopSound(num2 * (num1 - 1));
+      }
+
+    } else if (this.currentStep === 3) {
+      // Step 3: Question — how many total?
+      this.updateFormulaBanner(false);
+      // 「數數看」改為「數一數」，讓 TTS 朗讀第一個「數」為三聲 (ㄕㄨˇ)
+      const text = `第三步：${num1} 組的${theme.name}合在一起總共有幾個呢？數一數或想想看，有答案再把數字填上！`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      const uncountedGroup = this.createUncountedItemGroup(result, theme.icon);
+      container.appendChild(uncountedGroup);
+
+      const hintEl = document.createElement('div');
+      hintEl.style.cssText = 'width: 100%; text-align: center; font-size: 1.15rem; font-weight: 700; color: #f76707; margin-top: 8px;';
+      hintEl.textContent = `💭 ${num1} 組，每組 ${num2} 個，合起來總共有幾個？想好/數好再把答案填上！`;
+      container.appendChild(hintEl);
+
+      this.playSound('ding');
+
+    } else if (this.currentStep === 4) {
+      // Step 4: Announce answer
+      this.updateFormulaBanner(true);
+      const text = `${num1} 乘以 ${num2} 等於 ${result}，答案為 ${result}。🎉`;
+      this.setNarrator(text);
+      this.speak(text, () => this.onStepFinished());
+
+      // Show all items combined
+      const combinedGroup = this.createItemGroup(result, theme.icon, 1);
+      container.appendChild(combinedGroup);
+
+      this.playSound('fanfare');
+    }
+  }
+
+  // Helper: create a labeled group box for multiplication (shows group number label)
+  createMulGroup(count, icon, startBadge, groupLabel, labelColor = '#1864ab', extraClass = '') {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 4px;';
+
+    const labelEl = document.createElement('div');
+    labelEl.style.cssText = `font-size: 0.8rem; font-weight: 800; color: ${labelColor}; background: rgba(255,255,255,0.9); border: 1.5px solid ${labelColor}; border-radius: 10px; padding: 1px 10px; margin-bottom: 2px;`;
+    labelEl.textContent = `第 ${groupLabel} 組`;
+    wrapper.appendChild(labelEl);
+
+    const group = this.createItemGroup(count, icon, startBadge, extraClass);
+    wrapper.appendChild(group);
+    return wrapper;
   }
 
   // --- Addition Animation Steps ---
@@ -688,7 +813,8 @@ class FlashMathAnimator {
     } else if (this.currentStep === 3) {
       // Step 3: Question step - Do NOT reveal result
       this.updateFormulaBanner(false);
-      const text = `第三步：${num1} 加 ${num2} 合在一起總共有幾個呢？數數看或想想看，有答案再把數字填上！`;
+      // 「數數看」改為「數一數」，讓 TTS 朗讀第一個「數」為三聲 (ㄕㄨˇ)
+      const text = `第三步：${num1} 加 ${num2} 合在一起總共有幾個呢？數一數或想想看，有答案再把數字填上！`;
       this.setNarrator(text);
       // Spoken text is 100% identical to UI narrator text
       this.speak(text, () => this.onStepFinished());
@@ -798,7 +924,8 @@ class FlashMathAnimator {
     } else if (this.currentStep === 3) {
       // Step 3: Question step - Split per request: "8減5剩下幾個?" (No result shown or spoken)
       this.updateFormulaBanner(false);
-      const text = `第三步：${num1} 減 ${num2} 剩下幾個呢？數數看或想想看，有答案再把數字填上！`;
+      // 「數數看」改為「數一數」，讓 TTS 朗讀第一個「數」為三聲 (ㄕㄨˇ)
+      const text = `第三步：${num1} 減 ${num2} 剩下幾個呢？數一數或想想看，有答案再把數字填上！`;
       this.setNarrator(text);
       // Spoken text is 100% identical to UI narrator text
       this.speak(text, () => this.onStepFinished());

@@ -8,7 +8,7 @@ class MathApp {
   constructor() {
     // Current Configuration State (with defaults as specified)
     this.config = {
-      operation: 'sub', // Default: Subtraction ('sub' or 'add')
+      operation: 'sub', // Default: Subtraction ('sub', 'add', or 'mul')
       itemsCount: 2,    // Default: 2 items
       digits: 1,        // Default: 1 digit (e.g. 8 - 5, 9 - 2)
       mode: 'auto'      // Default: auto generate ('auto' or 'manual')
@@ -199,9 +199,44 @@ class MathApp {
   }
 
   onConfigChanged() {
+    // 乘法只支援 1 位數 (1~9 × 1~9)，強制鎖定位數
+    this.applyMulConstraints();
     this.updateModeUI();
     if (this.config.mode === 'auto') {
       this.generateNewProblem();
+    }
+  }
+
+  // 當切換到乘法時，位數只限定在1位數，且項目數固定為2
+  applyMulConstraints() {
+    const isMul = (this.config.operation === 'mul');
+    // Lock / unlock digits dropdown
+    if (this.digitsSelect) {
+      if (isMul) {
+        this.digitsSelect.value = '1';
+        this.config.digits = 1;
+        this.digitsSelect.disabled = true;
+        this.digitsSelect.style.opacity = '0.45';
+        this.digitsSelect.style.pointerEvents = 'none';
+      } else {
+        this.digitsSelect.disabled = false;
+        this.digitsSelect.style.opacity = '';
+        this.digitsSelect.style.pointerEvents = '';
+      }
+    }
+    // Lock / unlock itemsCount dropdown (multiplication is always 2 numbers)
+    if (this.itemsCountSelect) {
+      if (isMul) {
+        this.itemsCountSelect.value = '2';
+        this.config.itemsCount = 2;
+        this.itemsCountSelect.disabled = true;
+        this.itemsCountSelect.style.opacity = '0.45';
+        this.itemsCountSelect.style.pointerEvents = 'none';
+      } else {
+        this.itemsCountSelect.disabled = false;
+        this.itemsCountSelect.style.opacity = '';
+        this.itemsCountSelect.style.pointerEvents = '';
+      }
     }
   }
 
@@ -344,7 +379,8 @@ class MathApp {
 
   renderManualInputFields() {
     this.manualFieldsContainer.innerHTML = '';
-    const opSymbol = this.config.operation === 'add' ? '＋' : '－';
+    const op = this.config.operation;
+    const opSymbol = op === 'add' ? '＋' : (op === 'mul' ? '✕' : '－');
     const count = this.config.itemsCount;
 
     for (let i = 0; i < count; i++) {
@@ -411,6 +447,16 @@ class MathApp {
       }
     }
 
+    // For multiplication, enforce 1~9 range
+    if (this.config.operation === 'mul') {
+      for (let i = 0; i < numbers.length; i++) {
+        if (numbers[i] < 1 || numbers[i] > 9) {
+          alert(`乘法每個數字必須在 1 到 9 之間（個位數）！請重新輸入。`);
+          return;
+        }
+      }
+    }
+
     this.setupProblemWithNumbers(numbers, this.config.operation);
   }
 
@@ -439,7 +485,12 @@ class MathApp {
     const { operation, itemsCount, digits } = this.config;
     let numbers = [];
 
-    if (operation === 'add') {
+    if (operation === 'mul') {
+      // 乘法：固定兩個 1~9 的數字（10以內），組合不重複避免過於簡單
+      const a = Math.floor(Math.random() * 9) + 1; // 1~9
+      const b = Math.floor(Math.random() * 9) + 1; // 1~9
+      numbers = [a, b];
+    } else if (operation === 'add') {
       for (let i = 0; i < itemsCount; i++) {
         numbers.push(this.getRandomNumber(digits));
       }
@@ -497,6 +548,8 @@ class MathApp {
     for (let i = 1; i < numbers.length; i++) {
       if (operation === 'add') {
         correctAnswer += numbers[i];
+      } else if (operation === 'mul') {
+        correctAnswer *= numbers[i];
       } else {
         correctAnswer -= numbers[i];
       }
@@ -504,6 +557,7 @@ class MathApp {
 
     // Check Flash animation condition:
     // "只有在: 2個項目的數字且數字大小皆為10以內的情境; 至少要占整個UI的一半區域,來展示教學動畫"
+    // 乘法也符合條件（本身固定為 1~9）
     const isAnimationEligible = (
       numbers.length === 2 &&
       numbers[0] <= 10 &&
@@ -549,7 +603,7 @@ class MathApp {
 
   renderProblemUI() {
     const { numbers, operation } = this.currentProblem;
-    const opSymbol = operation === 'add' ? '＋' : '－';
+    const opSymbol = operation === 'add' ? '＋' : (operation === 'mul' ? '✕' : '－');
 
     let html = '';
     numbers.forEach((num, idx) => {
@@ -586,7 +640,33 @@ class MathApp {
 
   renderColumnMath(showResult = false) {
     const { numbers, operation, correctAnswer } = this.currentProblem;
-    const opSymbol = operation === 'add' ? '＋' : '－';
+    const opSymbol = operation === 'add' ? '＋' : (operation === 'mul' ? '✕' : '－');
+
+    // 乘法：顯示九九乘法表概念提示
+    if (operation === 'mul' && numbers.length === 2) {
+      const a = numbers[0], b = numbers[1];
+      const resultCell = showResult
+        ? `<span style="color: #2b8a3e;">${correctAnswer}</span>`
+        : `<span style="color: #e8590c;">？</span>`;
+
+      let tableHtml = `<table class="vertical-calc-table">`;
+      tableHtml += `<tr><td class="op-cell"></td><td>${a}</td></tr>`;
+      tableHtml += `<tr><td class="op-cell" style="color:#f76707;">✕</td><td class="border-bottom-line">${b}</td></tr>`;
+      tableHtml += `<tr><td class="op-cell"></td><td>${resultCell}</td></tr>`;
+      tableHtml += `</table>`;
+
+      let note = '';
+      if (showResult) {
+        // Show repeated-addition breakdown
+        const addParts = Array.from({length: b}, () => a).join(' ＋ ');
+        note = `<p style="margin-top: 10px; font-size: 0.9rem; color: #f76707; text-align: center;">` +
+          `💡 ${a} ✕ ${b} ＝ ${addParts} ＝ <strong>${correctAnswer}</strong>（${a} 累加 ${b} 次）</p>`;
+      } else {
+        note = `<p style="margin-top: 10px; font-size: 0.88rem; color: #868e96; text-align: center;">💭 請先動動腦輸入答案，送出後會揭曉乘法解析！</p>`;
+      }
+      this.columnMathBody.innerHTML = tableHtml + note;
+      return;
+    }
 
     // Provide vertical calculation view especially helpful for 2 items multi-digit
     if (numbers.length === 2) {
@@ -1023,6 +1103,11 @@ class MathApp {
       window.flashAnimator.playSound('woosh');
       this.showFeedback(false);
 
+      // 答錯時朗讀鼓勵語音（無論是自動或手動出題都要有）
+      if (window.flashAnimator && typeof window.flashAnimator.speak === 'function') {
+        window.flashAnimator.speak('答錯囉，沒關係，繼續加油！');
+      }
+
       // 清空輸入框答案，並保持持續變化透明度
       this.userAnswerInput.value = '';
       if (this.btnSubmit) {
@@ -1043,7 +1128,7 @@ class MathApp {
   showFeedback(isCorrect) {
     this.feedbackBanner.style.display = 'flex';
     const { numbers, operation, correctAnswer } = this.currentProblem;
-    const opSymbol = operation === 'add' ? '＋' : '－';
+    const opSymbol = operation === 'add' ? '＋' : (operation === 'mul' ? '✕' : '－');
     const formulaStr = numbers.join(` ${opSymbol} `) + ` ＝ ${correctAnswer}`;
 
     if (isCorrect) {
@@ -1067,7 +1152,7 @@ class MathApp {
 
   addHistoryRecord(userAnswer, isCorrect) {
     const { numbers, operation, correctAnswer } = this.currentProblem;
-    const opSymbol = operation === 'add' ? '＋' : '－';
+    const opSymbol = operation === 'add' ? '＋' : (operation === 'mul' ? '✕' : '－');
     const formula = numbers.join(` ${opSymbol} `);
 
     this.history.unshift({
