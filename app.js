@@ -584,6 +584,8 @@ class MathApp {
       this.workspace.classList.remove('has-animation');
       this.workspace.classList.add('no-animation');
       window.flashAnimator.pause();
+      // 非動畫模式：出題後朗讀題目（需有使用者手勢才能觸發 TTS）
+      this.speakProblem();
     }
 
     // Reset user answer input
@@ -1097,6 +1099,9 @@ class MathApp {
       // If Flash animation is active, unlock and reveal Step 4 celebration!
       if (this.currentProblem.isAnimationEligible) {
         window.flashAnimator.unlockAndRevealAnswer();
+      } else {
+        // 非動畫模式：朗讀「恭喜你！答對了！」，然後接著朗讀完整算式與答案
+        this.speakCorrectAnswer();
       }
     } else {
       this.stats.streak = 0;
@@ -1123,6 +1128,61 @@ class MathApp {
 
     this.updateStatsUI();
     this.addHistoryRecord(userAnswer, isCorrect);
+  }
+
+  // ==========================================
+  // 朗讀題目（非動畫模式：換題、切換運算類型時觸發）
+  // ==========================================
+  speakProblem() {
+    if (!window.flashAnimator) return;
+    if (!window.flashAnimator.speechEnabled) return;
+    // 必須等使用者有手勢互動後才能觸發 TTS（Android/iOS 限制）
+    if (!window.flashAnimator.hasUserInteracted) return;
+
+    const { numbers, operation } = this.currentProblem;
+    const opWord = operation === 'add' ? '加' : (operation === 'mul' ? '乘以' : '減');
+
+    let problemText;
+    if (numbers.length === 2) {
+      problemText = `題目是：${numbers[0]} ${opWord} ${numbers[1]} 等於多少？`;
+    } else {
+      // 3 個以上項目：「第1數 加/減 第2數 加/減 第3數 等於多少？」
+      const parts = numbers.map((n, i) => i === 0 ? String(n) : `${opWord} ${n}`);
+      problemText = `題目是：${parts.join(' ')} 等於多少？`;
+    }
+
+    // 延遲 400ms，等 UI 更新完再開始唸（避免與其他動作衝突）
+    setTimeout(() => {
+      if (window.flashAnimator && typeof window.flashAnimator.speak === 'function') {
+        window.flashAnimator.speak(problemText);
+      }
+    }, 400);
+  }
+
+  // ==========================================
+  // 朗讀答對回饋（非動畫模式：「恭喜你！答對了！」→ 完整算式與答案）
+  // ==========================================
+  speakCorrectAnswer() {
+    if (!window.flashAnimator) return;
+    if (!window.flashAnimator.speechEnabled) return;
+
+    const { numbers, operation, correctAnswer } = this.currentProblem;
+    const opWord = operation === 'add' ? '加' : (operation === 'mul' ? '乘以' : '減');
+
+    let answerText;
+    if (numbers.length === 2) {
+      answerText = `${numbers[0]} ${opWord} ${numbers[1]} 等於 ${correctAnswer}`;
+    } else {
+      const parts = numbers.map((n, i) => i === 0 ? String(n) : `${opWord} ${n}`);
+      answerText = `${parts.join(' ')} 等於 ${correctAnswer}`;
+    }
+
+    // 先唸「恭喜你！答對了！」，唸完後接著唸完整算式與答案
+    window.flashAnimator.speak('恭喜你！答對了！', () => {
+      if (window.flashAnimator && typeof window.flashAnimator.speak === 'function') {
+        window.flashAnimator.speak(answerText);
+      }
+    });
   }
 
   showFeedback(isCorrect) {
