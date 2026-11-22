@@ -50,6 +50,7 @@ class MathApp {
     this.manualPanel = document.getElementById('manualInputPanel');
     this.manualFieldsContainer = document.getElementById('manualFieldsContainer');
     this.btnApplyManual = document.getElementById('btnApplyManual');
+    this.btnSwitchManualInput = document.getElementById('btnSwitchManualInput');
     this.btnQuickTenExample = document.getElementById('btnQuickTenExample');
     this.soundToggleBtn = document.getElementById('soundToggleBtn');
     this.streakCountEl = document.getElementById('streakCount');
@@ -125,6 +126,13 @@ class MathApp {
 
     // Manual input events
     this.btnApplyManual.addEventListener('click', () => this.applyManualInput());
+    if (this.btnSwitchManualInput) {
+      this.btnSwitchManualInput.addEventListener('mousedown', (e) => {
+        // 防止按鈕點擊搶走焦點而清除輸入框選取
+        e.preventDefault();
+      });
+      this.btnSwitchManualInput.addEventListener('click', () => this.switchManualInputField());
+    }
     this.btnQuickTenExample.addEventListener('click', () => this.applyQuickTenExample());
 
     // Practice interactions
@@ -318,17 +326,37 @@ class MathApp {
     const targetInput = this.activeInput || this.userAnswerInput;
     if (!targetInput) return;
 
+    const start = targetInput.selectionStart;
+    const end = targetInput.selectionEnd;
+    const hasSelection = (typeof start === 'number' && typeof end === 'number' && start !== end);
+
     if (val === 'clear') {
       targetInput.value = '';
     } else if (val === 'backspace') {
-      targetInput.value = targetInput.value.slice(0, -1);
+      if (hasSelection) {
+        const cur = targetInput.value;
+        targetInput.value = cur.slice(0, start) + cur.slice(end);
+        try { targetInput.setSelectionRange(start, start); } catch (e) {}
+      } else {
+        targetInput.value = targetInput.value.slice(0, -1);
+      }
     } else {
-      if (targetInput.classList.contains('manual-input-box')) {
-        if (targetInput.value.length < 3) {
-          targetInput.value += val;
+      if (hasSelection) {
+        const cur = targetInput.value;
+        const nextVal = cur.slice(0, start) + val + cur.slice(end);
+        if (!targetInput.classList.contains('manual-input-box') || nextVal.length <= 3) {
+          targetInput.value = nextVal;
+          const newPos = start + val.length;
+          try { targetInput.setSelectionRange(newPos, newPos); } catch (e) {}
         }
       } else {
-        targetInput.value += val;
+        if (targetInput.classList.contains('manual-input-box')) {
+          if (targetInput.value.length < 3) {
+            targetInput.value += val;
+          }
+        } else {
+          targetInput.value += val;
+        }
       }
     }
 
@@ -350,6 +378,41 @@ class MathApp {
     }
 
     targetInput.focus();
+  }
+
+  // 切換手動輸入框：切換到另一個輸入框，若已有輸入過數字則直接全選標示
+  switchManualInputField() {
+    const inputs = Array.from(this.manualFieldsContainer.querySelectorAll('.manual-input-box'));
+    if (!inputs.length) return;
+
+    let currentIndex = inputs.indexOf(this.activeInput);
+    let nextIndex = 0;
+    if (currentIndex !== -1) {
+      nextIndex = (currentIndex + 1) % inputs.length;
+    }
+
+    const nextInput = inputs[nextIndex];
+    if (nextInput) {
+      this.activeInput = nextInput;
+      nextInput.focus();
+      if (nextInput.value && nextInput.value.length > 0) {
+        nextInput.select();
+        try {
+          nextInput.setSelectionRange(0, nextInput.value.length);
+        } catch (e) {}
+      }
+
+      // 雙重保險延遲確認選取狀態
+      setTimeout(() => {
+        nextInput.focus();
+        if (nextInput.value && nextInput.value.length > 0) {
+          nextInput.select();
+          try {
+            nextInput.setSelectionRange(0, nextInput.value.length);
+          } catch (e) {}
+        }
+      }, 10);
+    }
   }
 
   // ==========================================

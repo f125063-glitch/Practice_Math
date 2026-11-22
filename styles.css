@@ -314,6 +314,11 @@ body {
   box-shadow: 0 0 0 3px rgba(255, 146, 43, 0.25);
 }
 
+.manual-input-box::selection {
+  background-color: #339af0;
+  color: #ffffff;
+}
+
 .manual-operator-symbol {
   font-size: 1.4rem;
   font-weight: 900;
