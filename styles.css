@@ -902,6 +902,15 @@ body {
   box-shadow: 0 6px 14px rgba(76, 110, 245, 0.4);
 }
 
+.btn-refresh-problem:disabled {
+  background: #ced4da !important;
+  color: #868e96 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+  opacity: 0.6;
+}
+
 /* Problem Display Card */
 .problem-display-card {
   background: linear-gradient(135deg, #fdfbf7 0%, #f7f9fd 100%);

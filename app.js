@@ -31,6 +31,9 @@ class MathApp {
 
     this.history = [];
 
+    // Track whether this problem has already been recorded in history
+    this._currentProblemRecorded = false;
+
     // DOM Elements
     this.workspace = document.getElementById('mainWorkspace');
     this.horizontalProblemEl = document.getElementById('horizontalProblem');
@@ -111,8 +114,12 @@ class MathApp {
       btn.addEventListener('click', (e) => {
         document.querySelectorAll('#inputModeGroup .btn-toggle').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        const prevMode = this.config.mode;
         this.config.mode = btn.dataset.mode;
         this.updateModeUI();
+        if (prevMode !== 'auto' && this.config.mode === 'auto') {
+          this.generateNewProblem();
+        }
       });
     });
 
@@ -161,6 +168,7 @@ class MathApp {
     }
 
     this.btnNewProblem.addEventListener('click', () => {
+      if (this.config.mode === 'manual' || this.btnNewProblem.disabled) return;
       this.generateNewProblem();
     });
 
@@ -249,10 +257,33 @@ class MathApp {
         this.activeInput = firstInput;
         firstInput.focus();
       }
+      // 需求 3.2: “換下一題"的按鈕要變成反灰且無法使用
+      if (this.btnNewProblem) {
+        this.btnNewProblem.disabled = true;
+      }
+      // 需求 3.3: 動畫顯示區要暫時隱藏
+      if (this.workspace) {
+        this.workspace.classList.remove('has-animation');
+        this.workspace.classList.add('no-animation');
+      }
+      if (window.flashAnimator) {
+        window.flashAnimator.pause();
+      }
     } else {
       this.manualPanel.style.display = 'none';
       this.activeInput = this.userAnswerInput;
       this.userAnswerInput.focus();
+      // 需求 3.2: 切換回"自動產生"，"換下一題"按鈕恢復可用
+      if (this.btnNewProblem) {
+        this.btnNewProblem.disabled = false;
+      }
+      // 需求 3.3: 切換回"自動產生"，若符合動畫條件則恢復動畫顯示
+      if (this.currentProblem && this.currentProblem.isAnimationEligible) {
+        if (this.workspace) {
+          this.workspace.classList.remove('no-animation');
+          this.workspace.classList.add('has-animation');
+        }
+      }
     }
     this.updateKeyboardVisibility();
   }
@@ -399,14 +430,8 @@ class MathApp {
       input.placeholder = `第${i + 1}數`;
       input.maxLength = 3;
 
-      // Pre-populate with reasonable values
-      if (this.config.itemsCount === 2 && this.config.digits === 1) {
-        input.value = (i === 0 ? '8' : '3');
-      } else if (this.config.itemsCount === 2 && this.config.digits === 2) {
-        input.value = (i === 0 ? '72' : '18');
-      } else {
-        input.value = (i === 0 ? '80' : '20');
-      }
+      // 需求 3.1: 兩個手動輸入框的內容, 預設要清空
+      input.value = '';
 
       input.addEventListener('focus', () => {
         this.activeInput = input;
@@ -544,6 +569,9 @@ class MathApp {
   }
 
   setupProblemWithNumbers(numbers, operation) {
+    // 題目變更時重置答題記錄狀態，允許新題目計入新的1筆練習紀錄
+    this._currentProblemRecorded = false;
+
     let correctAnswer = numbers[0];
     for (let i = 1; i < numbers.length; i++) {
       if (operation === 'add') {
@@ -1084,10 +1112,22 @@ class MathApp {
     const userAnswer = parseInt(valText, 10);
     const isCorrect = (userAnswer === this.currentProblem.correctAnswer);
 
-    this.stats.total++;
+    // 需求 2: 題目未變更的情況下，按超過2次以上"確認送出"按鈕時，練習記錄只能算1筆，直到題目變更才能算新的1筆
+    const isFirstSubmit = !this._currentProblemRecorded;
+    if (isFirstSubmit) {
+      this._currentProblemRecorded = true;
+      this.stats.total++;
+      if (isCorrect) {
+        this.stats.correct++;
+        this.stats.streak++;
+      } else {
+        this.stats.streak = 0;
+      }
+      this.updateStatsUI();
+      this.addHistoryRecord(userAnswer, isCorrect);
+    }
+
     if (isCorrect) {
-      this.stats.correct++;
-      this.stats.streak++;
       if (this.btnSubmit) {
         this.btnSubmit.classList.remove('pulsing-opacity');
       }
@@ -1104,7 +1144,6 @@ class MathApp {
         this.speakCorrectAnswer();
       }
     } else {
-      this.stats.streak = 0;
       window.flashAnimator.playSound('woosh');
       this.showFeedback(false);
 
@@ -1125,9 +1164,6 @@ class MathApp {
         window.flashAnimator.startStep3Cycle();
       }
     }
-
-    this.updateStatsUI();
-    this.addHistoryRecord(userAnswer, isCorrect);
   }
 
   // ==========================================
